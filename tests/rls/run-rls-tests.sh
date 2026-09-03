@@ -15,6 +15,20 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DB_NAME="${RLS_TEST_DB:-health_platform_rls_test}"
 
+if ! psql -X -q -d postgres -c 'select 1' >/dev/null 2>&1; then
+  cat >&2 <<'MSG'
+ERROR: no reachable PostgreSQL server.
+
+This suite needs a local PostgreSQL 16+ server and a superuser psql connection.
+Start one, for example:
+
+    pg_ctlcluster 16 main start
+
+Or point psql at another server with PGHOST / PGPORT / PGUSER.
+MSG
+  exit 1
+fi
+
 bash "${REPO_ROOT}/scripts/db-local-apply.sh" "${DB_NAME}"
 
 echo ""

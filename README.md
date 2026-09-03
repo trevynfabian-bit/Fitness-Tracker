@@ -47,6 +47,20 @@ Reference data lives in `supabase/seeds/`, separate from schema migrations, as
 idempotent upserts. Adding a metric definition must never require a schema
 change.
 
+### Local Supabase stack
+
+```bash
+npx supabase start        # Postgres + GoTrue + PostgREST + Kong + Mailpit
+npx supabase db reset     # re-apply migrations and reference-data seeds
+npx supabase status       # URLs and keys
+```
+
+Local auth email is captured by Mailpit at <http://127.0.0.1:54324> rather than
+being delivered. Email confirmation is enabled (`[auth.email]
+enable_confirmations = true`) so the confirmation flow is a tested path rather
+than an untested branch, and `supabase/templates/confirmation.html` points the
+link at the application's own `/auth/confirm` route.
+
 ### Local database without Docker
 
 `supabase start` needs a Docker daemon. Where one is unavailable, the same SQL
@@ -82,8 +96,17 @@ npm run typecheck        # tsc --noEmit
 npm run test             # vitest: env validation, route classification, auth actions
 npm run test:rls         # RLS isolation with two authenticated users (needs Postgres)
 npm run test:routes      # protected routes reject unauthenticated access (builds + serves)
+npm run test:e2e         # real signup/confirm/login/logout + RLS (needs `supabase start`)
 npm run test:all         # all of the above
 ```
+
+`npm run test:e2e` drives the built application in a real browser against a
+running Supabase stack: sign up, confirm by email, log in, log out, and
+cross-user RLS both through `@supabase/supabase-js` and through the dashboard
+itself. It reads only the anon key — the service role key is never exported to
+it. To run it against a hosted project instead, export
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `MAILPIT_URL`
+(or disable email confirmation on that project) before invoking it.
 
 `npm run test:rls` rebuilds a throwaway database from the committed migrations
 and seed, then runs every assertion as the `authenticated` Postgres role with a

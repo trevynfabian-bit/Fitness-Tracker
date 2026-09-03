@@ -1,6 +1,6 @@
 # Phase 1 — Foundation: Implementation Report
 
-Date: 2026-09-03
+Date: 2026-09-03 (revision 2 — real Supabase verification)
 Branch: `claude/phase-1-foundation-zwjvhy`
 
 ---
@@ -66,24 +66,28 @@ narrow them.
 
 ---
 
-## 3. Test environment constraint
+## 3. Test environment
 
-No Docker daemon is available in this environment, so `supabase start` cannot
-run, and no Supabase project URL or keys were supplied. PostgreSQL 16.13 is
-available locally.
+Revision 1 of this report was blocked on infrastructure. That is resolved: a
+Docker daemon was started in this environment and the full Supabase stack now
+runs locally — Postgres 17.6, GoTrue (auth), PostgREST, Kong and Mailpit, from
+the official Supabase images.
 
-Consequences:
+No hosted Supabase project credentials were supplied, so verification ran
+against that **locally hosted real Supabase stack**: the same server software a
+hosted project runs, reached over HTTP through Kong with the anon key. It is
+not the user's cloud project, so project-specific configuration on that project
+(its auth settings, network restrictions, custom SMTP) remains unverified. The
+e2e suite accepts `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+from the environment and can be pointed at a hosted project unchanged.
 
-- **RLS is verified against real PostgreSQL**, using the committed migrations
-  and seed plus a small shim that recreates the part of Supabase's `auth`
-  schema the migrations depend on (`auth.users`, `auth.uid()`, and the `anon`
-  / `authenticated` / `service_role` roles). RLS is a PostgreSQL feature and
-  `authenticated` + a JWT subject claim is exactly the context a Supabase
-  client request runs in, so the policies themselves are genuinely exercised.
-  It is *not* a live Supabase project and does not exercise PostgREST.
-- **Sign up / login / logout against a real Supabase Auth server is not
-  verified.** The action logic is unit tested against a stubbed client; the
-  network round trip to GoTrue is not. See §7.
+Both verification paths are now in place and both pass:
+
+- **Direct SQL** (`npm run test:rls`) — fast, no Docker, uses the auth shim.
+  Asserts policy structure and isolation at the database level.
+- **Real Supabase + real browser** (`npm run test:e2e`) — signup, email
+  confirmation, login, logout and cross-user RLS through GoTrue, Kong,
+  PostgREST and the application UI. Reads only the anon key.
 
 ---
 
@@ -141,19 +145,63 @@ Inferred (not specified in `CLAUDE.md`) columns, for review against v2/v3:
 `metric_definitions.default_aggregation`, `*_aliases.source_key`,
 `is_active` / `description` on the definition tables.
 
-## 7. Known limitations
+## 7. Bug found and fixed by real-stack testing
 
-1. Sign up, login and logout have not been executed against a live Supabase
-   Auth server. No credentials and no Docker.
-2. The dashboard's registry read has not been executed against PostgREST for
-   the same reason. It uses only `select` + `order`, deliberately avoiding
-   embedded-resource syntax that could not be verified.
-3. `sources`, `exercise_definitions`, `exercise_aliases`, `activity_types` and
+`GET /auth/confirm` set the session cookie correctly but redirected using
+`new URL(next, request.url)`. In a Route Handler that resolves to the server's
+own origin, not the origin the client used: the cookie was set for
+`127.0.0.1:3000` and the redirect pointed at `localhost:3000`. The browser
+dropped the cookie and the user landed back on `/login` having apparently
+confirmed successfully. `request.nextUrl` has the same defect in a Route
+Handler (the middleware's `nextUrl` does not).
+
+Fixed by emitting a relative `Location` header, which is host-agnostic and
+matches what the middleware already emits. Covered by the e2e suite and by
+`tests/confirm-route.test.ts`, which asserts no redirect from that route is
+ever absolute.
+
+This class of bug is invisible to unit tests with a stubbed client, and it
+would have shipped.
+
+## 8. Known limitations
+
+1. Verification ran against a locally hosted real Supabase stack, not the
+   user's hosted project. Project-specific configuration on a hosted project
+   is unverified.
+2. Production email delivery is unverified — local auth email is captured by
+   Mailpit. The template and the link target are verified; SMTP is not.
+3. Password reset, email change and OAuth providers are not implemented and
+   not tested. Phase 1 specifies sign up, login, logout and protected routes.
+4. `sources`, `exercise_definitions`, `exercise_aliases`, `activity_types` and
    `event_definitions` are created and secured but seeded with nothing.
    `CLAUDE.md` Phase 1 specifies seed content for metrics only.
-4. Supabase's default privileges grant `ALL` on new `public` tables to `anon`
-   and `authenticated`. The RLS migration revokes those explicitly. Every
-   future table migration must include its own grants and policies; the
-   defaults are not safe to rely on.
-5. `metric_aliases` / `exercise_aliases` store raw alias text. Fuzzy matching
+5. Supabase's default privileges grant `ALL` on new `public` tables to `anon`
+   and `authenticated`. The RLS migration revokes those explicitly, and the
+   local stack is deliberately left at the cloud-parity
+   `auto_expose_new_tables` default so the revoke is tested under the same
+   conditions as production. Every future table migration must still include
+   its own grants and policies; the defaults are not safe to rely on.
+6. `metric_aliases` / `exercise_aliases` store raw alias text. Fuzzy matching
    during mapping (I-6) is Phase 3 and is not implemented.
+
+## 9. Phase 1 exit criteria — final
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Real signup against Supabase Auth | PASS |
+| 2 | Email confirmation flow | PASS |
+| 3 | Real login | PASS |
+| 4 | Logout | PASS |
+| 5 | Authenticated user reaches the protected dashboard | PASS |
+| 6 | Unauthenticated user redirected away from protected routes | PASS |
+| 7 | RLS verified through the Supabase API/client path | PASS |
+| 8 | User A cannot read user B's rows via the client and the UI | PASS |
+| 9 | User B cannot read user A's rows | PASS |
+| 10 | System registry readable, user rows isolated | PASS |
+
+`CLAUDE.md` §4 Phase 1 exit — "a user can sign up, log in, reach a protected
+route, and query only their own rows; RLS tested explicitly with two accounts,
+attempting a cross-user read from the client and confirming it returns zero
+rows" — is met in full.
+
+**Next-phase readiness: YES.**

@@ -11,8 +11,12 @@
     "test": "vitest run",
     "test:rls": "bash tests/rls/run-rls-tests.sh",
     "test:routes": "bash tests/http/run-route-protection-tests.sh",
-    "test:all": "npm run typecheck && npm run test && npm run test:rls && npm run test:routes",
-    "db:apply:local": "bash scripts/db-local-apply.sh"
+    "test:all": "npm run typecheck && npm run test && npm run test:rls && npm run test:routes && npm run test:e2e",
+    "db:apply:local": "bash scripts/db-local-apply.sh",
+    "test:e2e": "bash tests/e2e/run-e2e-tests.sh",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:reset": "supabase db reset"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
@@ -26,6 +30,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.7.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -33,6 +38,7 @@
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.0.0",
     "postcss": "^8.4.47",
+    "supabase": "^2.116.0",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.6.3",
     "vitest": "^2.1.3"
