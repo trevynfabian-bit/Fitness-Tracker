@@ -1,0 +1,41 @@
+# Supabase CLI configuration.
+# `project_id` is the local stack identifier; link a real project with
+# `supabase link --project-ref <ref>` before running `supabase db push`.
+project_id = "health-platform"
+
+[db]
+port = 54322
+major_version = 16
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/confirm"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+double_confirm_changes = true
+
+[studio]
+enabled = true
+port = 54323
+
+[storage]
+enabled = false
+
+[analytics]
+enabled = false
