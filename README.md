@@ -15,21 +15,80 @@ fabricates measurements.
 
 Next.js (App Router) · TypeScript · Tailwind · Supabase (Postgres, Auth, RLS)
 
-## Getting started
+## Running it locally
+
+You need **Node 22+** and **Docker** (Docker Desktop on macOS or Windows). Docker
+is what runs the local Supabase stack: Postgres, Auth, PostgREST, Storage and a
+mail catcher.
 
 ```bash
+git clone https://github.com/trevynfabian-bit/Fitness-Tracker.git
+cd Fitness-Tracker
 npm install
-cp .env.example .env.local     # fill in your Supabase project URL and anon key
+
+npx supabase start        # first run pulls a few GB of images
+npx supabase status       # prints the URLs and keys you need next
+```
+
+Create `.env.local` and fill it from what `supabase status` printed:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321      # API_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...                    # ANON_KEY
+NEXT_PUBLIC_SITE_URL=http://127.0.0.1:3000
+
+# Server-only. The import worker needs these; nothing else reads them.
+SUPABASE_SERVICE_ROLE_KEY=...                        # SERVICE_ROLE_KEY
+IMPORT_WORKER_SECRET=any-long-random-string
+```
+
+Then:
+
+```bash
 npm run dev
 ```
 
-Both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are
-validated at boot by `src/lib/env.ts`. A missing or malformed value aborts the
-build and the server with a readable message rather than failing at first
-request.
+Open <http://127.0.0.1:3000>. Use `127.0.0.1`, not `localhost`: the session
+cookie is scoped to the host you sign in on, and mixing the two loses it.
 
-The Supabase **service role key is deliberately not part of the application
-environment**. No application code path may bypass RLS.
+### Signing up
+
+Email confirmation is on, and local mail is captured rather than sent. After
+signing up, open **<http://127.0.0.1:54324>**, click the confirmation link in
+the message, and you land on the dashboard.
+
+### Importing a file
+
+1. Go to **/import** and choose a CSV. A Hevy-shaped sample lives at
+   `tests/fixtures/hevy/hevy-export.csv`.
+2. The file is parsed in your browser and uploaded straight to private storage.
+   The preview shows what would happen and which exercises need a registry
+   entry. Nothing is written yet.
+3. Click **Confirm and import**.
+4. **Run the worker.** There is no cron in local development, so nothing
+   happens until you poke it:
+
+   ```bash
+   curl -X POST http://127.0.0.1:3000/api/worker \
+     -H "x-worker-secret: $IMPORT_WORKER_SECRET"
+   ```
+
+   Run it again until it reports `"batches": 0`. Then reload the import page.
+
+A `full_snapshot` import that proposes retirements stops at a confirmation
+screen instead of retiring anything. That is deliberate, and the database
+enforces it independently of the UI.
+
+### Other useful commands
+
+```bash
+npx supabase status     # URLs and keys
+npx supabase db reset   # re-apply every migration and seed from scratch
+npx supabase stop       # free the containers
+npm run test:all        # the whole suite (needs the stack running)
+```
+
+Studio, for looking at the tables directly, is at <http://127.0.0.1:54323>.
 
 ## Database
 
