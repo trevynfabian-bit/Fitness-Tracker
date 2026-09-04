@@ -1,0 +1,146 @@
+{
+  "profile_id": "hevy.strength.v1",
+  "name": "Hevy \u2014 Workout export",
+  "source_key": "hevy",
+  "template": "strength",
+  "detection": {
+    "required_columns": [
+      "title",
+      "start_time",
+      "exercise_title",
+      "weight_kg",
+      "reps"
+    ],
+    "signature_tokens": [
+      "title",
+      "start_time",
+      "end_time",
+      "description",
+      "exercise_title",
+      "superset_id",
+      "exercise_notes",
+      "set_index",
+      "set_type",
+      "weight_kg",
+      "reps",
+      "distance_km",
+      "duration_seconds",
+      "rpe"
+    ],
+    "min_similarity": 0.85
+  },
+  "import_mode": "full_snapshot",
+  "snapshot_scope": {
+    "source_key": "hevy",
+    "templates": [
+      "strength"
+    ],
+    "date_range": "derive_from_file",
+    "metric_keys": null
+  },
+  "retention_overrides": {},
+  "mapping_spec": {
+    "template": "strength",
+    "layout": "wide",
+    "timestamp": {
+      "columns": [
+        "start_time"
+      ],
+      "format": "yyyy-MM-dd HH:mm:ss",
+      "timezone": {
+        "mode": "fixed",
+        "tz_name": "UTC"
+      }
+    },
+    "strength": {
+      "workout": {
+        "title": {
+          "column": "title"
+        }
+      },
+      "exercise": {
+        "name": {
+          "column": "exercise_title"
+        }
+      },
+      "set": {
+        "set_number": {
+          "transform": {
+            "name": "row_index_within_group",
+            "params": {
+              "group_by": [
+                "start_time",
+                "exercise_title"
+              ]
+            }
+          }
+        },
+        "set_type": {
+          "column": "set_type",
+          "transform": {
+            "name": "map_values",
+            "params": {
+              "map": {
+                "normal": "working",
+                "warmup": "warmup",
+                "failure": "failure",
+                "dropset": "drop",
+                "drop": "drop"
+              },
+              "default": "working",
+              "blank": "working"
+            }
+          }
+        },
+        "weight": {
+          "column": "weight_kg",
+          "unit": "kg"
+        },
+        "reps": {
+          "column": "reps"
+        },
+        "duration_s": {
+          "column": "duration_seconds",
+          "transform": {
+            "name": "blank_as_null",
+            "params": {
+              "values": [
+                "-",
+                "N/A",
+                ""
+              ]
+            }
+          }
+        },
+        "distance": {
+          "column": "distance_km",
+          "unit": "km"
+        },
+        "rpe": {
+          "column": "rpe",
+          "transform": {
+            "name": "blank_as_null",
+            "params": {
+              "values": [
+                "-",
+                "N/A",
+                ""
+              ]
+            }
+          }
+        }
+      }
+    },
+    "row_filters": [
+      {
+        "column": "exercise_title",
+        "op": "not_empty"
+      }
+    ],
+    "constants": {
+      "source_key": "hevy"
+    },
+    "decimal_separator": ".",
+    "on_unmapped_column": "ignore"
+  }
+}

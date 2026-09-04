@@ -38,7 +38,15 @@ if [[ -z "${NEXT_PUBLIC_SUPABASE_URL:-}" ]]; then
   export NEXT_PUBLIC_SUPABASE_URL="${API_URL}"
   export NEXT_PUBLIC_SUPABASE_ANON_KEY="${ANON_KEY}"
   export MAILPIT_URL="${MAILPIT_URL:-http://127.0.0.1:54324}"
-  # Deliberately not exported: SERVICE_ROLE_KEY / SECRET_KEY.
+  # Phase 3 needs two more, and they are scoped deliberately:
+  #   SUPABASE_SERVICE_ROLE_KEY  the worker's elevated connection. Normalization
+  #                              is the sanctioned canonical write path and the
+  #                              client roles hold SELECT only (I-4, RD-3).
+  #   E2E_SERVICE_ROLE_KEY       verification reads in the spec only. Every user
+  #                              action in the spec still goes through the UI.
+  export SUPABASE_SERVICE_ROLE_KEY="${SERVICE_ROLE_KEY}"
+  export E2E_SERVICE_ROLE_KEY="${SERVICE_ROLE_KEY}"
+  export IMPORT_WORKER_SECRET="${IMPORT_WORKER_SECRET:-local-e2e-worker-secret}"
   unset SERVICE_ROLE_KEY SECRET_KEY JWT_SECRET DB_URL
 fi
 
@@ -50,6 +58,7 @@ fi
 
 export E2E_PORT="${E2E_PORT:-3000}"
 export NEXT_PUBLIC_SITE_URL="http://127.0.0.1:${E2E_PORT}"
+export E2E_BASE_URL="http://127.0.0.1:${E2E_PORT}"
 
 echo "==> Supabase API : ${NEXT_PUBLIC_SUPABASE_URL}"
 echo "==> Mail capture : ${MAILPIT_URL}"

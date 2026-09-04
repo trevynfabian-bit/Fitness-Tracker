@@ -33,6 +33,7 @@ values
   (null, 'lb',      'Pound',                 'lb',    'mass'),
   (null, 'cm',      'Centimetre',            'cm',    'length'),
   (null, 'm',       'Metre',                 'm',     'length'),
+  (null, 'km',      'Kilometre',             'km',    'length'),
   (null, 'in',      'Inch',                  'in',    'length'),
   (null, 'ms',      'Millisecond',           'ms',    'time'),
   (null, 's',       'Second',                's',     'time'),
@@ -73,6 +74,10 @@ from (
     ('cm',   'm',    0.010000000000000::numeric),
     ('in',   'cm',   2.540000000000000::numeric),
     ('cm',   'in',   0.393700787401575::numeric),
+    ('km',   'm',    1000.000000000000000::numeric),
+    ('m',    'km',   0.001000000000000::numeric),
+    ('km',   'cm',   100000.000000000000000::numeric),
+    ('cm',   'km',   0.000010000000000::numeric),
     -- time
     ('ms',   's',    0.001000000000000::numeric),
     ('s',    'ms',   1000.000000000000000::numeric),

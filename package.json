@@ -23,9 +23,11 @@
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
+    "@types/papaparse": "^5.5.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "next": "^15.0.0",
+    "papaparse": "^5.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.5.4",
