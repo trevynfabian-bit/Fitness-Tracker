@@ -353,6 +353,11 @@ declare
     array['import_jobs','SELECT'],
     array['raw_records','SELECT'],
     array['import_coverage','SELECT'],
+    -- SELECT is the only table-level grant. The user's ability to record a
+    -- decision is a COLUMN-level UPDATE grant, which has_table_privilege
+    -- deliberately does not report; it is asserted separately below.
+    array['reconciliation_plans','SELECT'],
+    array['retirement_overrides','SELECT,INSERT'],
     -- canonical tables: SELECT only (I-4 / RD-3)
     array['metrics','SELECT'],
     array['strength_workouts','SELECT'],
@@ -406,6 +411,7 @@ begin
        'sources','units','unit_conversions','metric_definitions','metric_aliases',
        'exercise_definitions','exercise_aliases','activity_types','event_definitions',
        'import_profiles','data_imports','import_jobs','raw_records','import_coverage',
+       'reconciliation_plans','retirement_overrides',
        'metrics','strength_workouts','strength_exercises','strength_sets',
        'v_metrics','v_strength_workouts','v_strength_exercises','v_strength_sets'
      );
@@ -413,6 +419,26 @@ begin
     raise exception 'FAIL [PRIV] objects exist that the privilege matrix does not cover: %', missing;
   end if;
   raise notice 'PASS [PRIV] every table and view in the schema is covered by the matrix above';
+end
+$$;
+
+-- The plan's UPDATE grant is column level: the user may record a decision, and
+-- may not touch the impact figures or the retirement key set they were shown.
+do $$
+declare c text;
+begin
+  foreach c in array array['decision','decided_at','decided_reason'] loop
+    if not has_column_privilege('authenticated', 'public.reconciliation_plans', c, 'UPDATE') then
+      raise exception 'FAIL [PRIV] authenticated cannot record % on a reconciliation plan', c;
+    end if;
+  end loop;
+  foreach c in array array['retire_natural_keys','retire_count','retire_ratio','verdict',
+                           'guard_results','scope','import_id','computed_at'] loop
+    if has_column_privilege('authenticated', 'public.reconciliation_plans', c, 'UPDATE') then
+      raise exception 'FAIL [PRIV] authenticated can rewrite reconciliation_plans.%', c;
+    end if;
+  end loop;
+  raise notice 'PASS [PRIV] the plan UPDATE grant is column level: decision fields only, never the computed impact';
 end
 $$;
 

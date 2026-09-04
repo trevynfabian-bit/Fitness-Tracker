@@ -44,8 +44,8 @@ begin;
 insert into public.exercise_definitions (user_id, key, display_name)
 values (:'uid', 'barbell_bench_press', 'Barbell Bench Press');
 
-insert into public.exercise_aliases (user_id, exercise_definition_id, alias, source_key)
-select :'uid', id, 'Bench Press (Barbell)', 'sample_source'
+insert into public.exercise_aliases (user_id, exercise_definition_id, alias_normalized, source_key)
+select :'uid', id, 'bench press barbell', 'sample_source'
   from public.exercise_definitions
  where user_id = :'uid' and key = 'barbell_bench_press';
 
@@ -399,9 +399,29 @@ select pg_temp.rejects(
               '00000000-0000-4000-8000-000000000002', 'sample_source', '{}'::jsonb, 'h-red', 'reduced') $q$,
   'reduced raw record without its bucket columns', '23514');
 
+-- Two defences cover this now: the retirement consistency CHECK, and the Step 0
+-- retirement guard, which fires first because BEFORE triggers run ahead of
+-- constraint evaluation. The code is not pinned; the CHECK is asserted from the
+-- catalogue below.
 select pg_temp.rejects(
   $q$ update public.strength_workouts set retired_at = now() $q$,
-  'retired_at without retired_by_import_id', '23514');
+  'retired_at without retired_by_import_id');
+
+do $$
+declare t text;
+begin
+  foreach t in array array['metrics','strength_workouts','strength_sets'] loop
+    if not exists (
+      select 1 from pg_constraint
+       where conrelid = ('public.' || t)::regclass and contype = 'c'
+         and conname = t || '_retirement_consistent'
+    ) then
+      raise exception 'FAIL public.% lost its retirement consistency CHECK', t;
+    end if;
+  end loop;
+  raise notice 'PASS [retirement consistency] retired_at and retired_by_import_id are CHECK-bound on all three retirable tables';
+end
+$$;
 
 select pg_temp.rejects(
   $q$ update public.metric_definitions
@@ -446,6 +466,10 @@ begin
        or (table_name = 'unit_conversions' and (numeric_precision, numeric_scale) = (30, 15))  -- R7 coefficients
        or (table_name = 'strength_sets' and column_name = 'rpe'
            and (numeric_precision, numeric_scale) = (4, 2))                            -- R5 domain exception
+       -- R7 also allows a bounded domain value to use narrower precision where
+       -- the architecture specifies it. v3 section 4.2 declares this one.
+       or (table_name = 'reconciliation_plans' and column_name = 'retire_ratio'
+           and (numeric_precision, numeric_scale) = (6, 4))
      );
   if bad is not null then
     raise exception 'FAIL [I-7] numeric columns outside the approved precision classes: %', bad;
@@ -460,14 +484,28 @@ begin
     raise exception 'FAIL [I-7] a float column exists in the public schema';
   end if;
 
-  raise notice 'PASS [I-7/R5/R7] every numeric column is 18,6 except unit_conversions 30,15 and strength_sets.rpe 4,2; no floats';
+  raise notice 'PASS [I-7/R5/R7] every numeric column is 18,6 except unit_conversions 30,15, strength_sets.rpe 4,2 and reconciliation_plans.retire_ratio 6,4; no floats';
 end
 $$;
 
 -- --- R3 retirement propagates through the views ----------------------------
 do $$
-declare vw bigint; ve bigint; vs bigint; te bigint; ts bigint;
+declare vw bigint; ve bigint; vs bigint; te bigint; ts bigint; wk_key text;
 begin
+  -- Since Phase 3 Step 0, retirement requires a persisted, confirmed,
+  -- non-blocked plan that names the row (I-10). Build one.
+  select natural_key into wk_key from public.strength_workouts
+   where id = '00000000-0000-4000-8000-000000000003'::uuid;
+
+  insert into public.reconciliation_plans
+    (user_id, import_id, scope, add_count, update_count, unchanged_count,
+     retire_count, existing_in_scope_count, retire_ratio, retire_natural_keys,
+     guard_results, verdict, decision, decided_at)
+  values ('33333333-3333-4333-8333-333333333333',
+          '00000000-0000-4000-8000-000000000002'::uuid, '{}'::jsonb,
+          0, 0, 0, 1, 1, 1.0000, array[wk_key],
+          '[{"id":"G4","outcome":"pass"}]'::jsonb, 'safe', 'confirmed', now());
+
   update public.strength_workouts
      set retired_at = now(),
          retired_by_import_id = '00000000-0000-4000-8000-000000000002'::uuid

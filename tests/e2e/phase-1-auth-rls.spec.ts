@@ -348,10 +348,12 @@ test.describe("Phase 1 — auth and RLS against a real Supabase project", () => 
     expect(deleted).toEqual([]);
 
     // Cross-user parent reference is blocked by the ownership trigger.
+    // alias_normalized must already be in normalized form (lowercase, no
+    // punctuation, single spaces); the value below is.
     const { error: aliasError } = await client.from("metric_aliases").insert({
       user_id: owned.a.userId,
       metric_definition_id: owned.b.definitionId,
-      alias: `stolen alias ${RUN}`,
+      alias_normalized: `stolen alias ${RUN}`,
     });
     expect(aliasError?.code).toBe("42501");
   });

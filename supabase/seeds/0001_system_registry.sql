@@ -131,69 +131,63 @@ do update set
 -- metric_aliases
 --   Source-agnostic aliases (source_key IS NULL). Vendor-scoped aliases are
 --   added by the vendor's import profile, not here (I-9).
+--
+--   Every value below is already in the form public.normalize_alias produces
+--   (lowercase, punctuation to space, whitespace collapsed, trimmed), which the
+--   metric_aliases_alias_is_normalized check constraint requires. Variants that
+--   differed only in punctuation, such as body_fat and "body fat %", collapse
+--   to one entry and are not repeated here.
 -- ---------------------------------------------------------------------------
 
-insert into public.metric_aliases (user_id, metric_definition_id, alias, source_key)
-select null, d.id, v.alias, null
+insert into public.metric_aliases (user_id, metric_definition_id, alias_normalized, source_key)
+select null, d.id, v.alias_normalized, null
 from (
   values
     ('weight',                 'weight'),
     ('weight',                 'body weight'),
     ('weight',                 'bodyweight'),
-    ('weight',                 'body_weight'),
-    ('weight',                 'weight_kg'),
-    ('weight',                 'weight (kg)'),
-    ('weight',                 'weight (lb)'),
+    ('weight',                 'weight kg'),
+    ('weight',                 'weight lb'),
 
     ('body_fat_percentage',    'body fat'),
-    ('body_fat_percentage',    'body fat %'),
     ('body_fat_percentage',    'body fat percentage'),
-    ('body_fat_percentage',    'body_fat'),
     ('body_fat_percentage',    'bodyfat'),
-    ('body_fat_percentage',    'body_fat_percentage'),
     ('body_fat_percentage',    'fat percentage'),
 
     ('waist_circumference',    'waist'),
     ('waist_circumference',    'waist circumference'),
-    ('waist_circumference',    'waist_circumference'),
-    ('waist_circumference',    'waist (cm)'),
+    ('waist_circumference',    'waist cm'),
 
     ('resting_heart_rate',     'rhr'),
     ('resting_heart_rate',     'resting hr'),
     ('resting_heart_rate',     'resting heart rate'),
-    ('resting_heart_rate',     'resting_heart_rate'),
 
     ('heart_rate_variability', 'hrv'),
     ('heart_rate_variability', 'heart rate variability'),
-    ('heart_rate_variability', 'heart_rate_variability'),
     ('heart_rate_variability', 'rmssd'),
 
     ('sleep_duration',         'sleep'),
     ('sleep_duration',         'sleep duration'),
-    ('sleep_duration',         'sleep_duration'),
     ('sleep_duration',         'time asleep'),
     ('sleep_duration',         'total sleep'),
     ('sleep_duration',         'asleep duration'),
 
     ('steps',                  'steps'),
     ('steps',                  'step count'),
-    ('steps',                  'step_count'),
     ('steps',                  'daily steps'),
 
     ('active_energy',          'active energy'),
-    ('active_energy',          'active_energy'),
     ('active_energy',          'active energy burned'),
     ('active_energy',          'active calories'),
     ('active_energy',          'calories burned'),
 
     ('recovery_score',         'recovery'),
     ('recovery_score',         'recovery score'),
-    ('recovery_score',         'recovery_score'),
     ('recovery_score',         'readiness'),
     ('recovery_score',         'readiness score')
-) as v (metric_key, alias)
+) as v (metric_key, alias_normalized)
 join public.metric_definitions d on d.key = v.metric_key and d.user_id is null
-on conflict (lower(btrim(alias)), coalesce(source_key, '')) where user_id is null
+on conflict (alias_normalized, coalesce(source_key, '')) where user_id is null
 do update set
   metric_definition_id = excluded.metric_definition_id,
   updated_at           = now();

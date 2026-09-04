@@ -128,14 +128,14 @@ insert into public.metric_definitions (user_id, key, display_name, canonical_uni
 select auth.uid(), 'private_metric', 'Private Metric', u.id, 'mean'
 from public.units u where u.key = 'kg' and u.user_id is null;
 
-insert into public.metric_aliases (user_id, metric_definition_id, alias)
+insert into public.metric_aliases (user_id, metric_definition_id, alias_normalized)
 select auth.uid(), d.id, 'my private column'
 from public.metric_definitions d where d.key = 'private_metric' and d.user_id = auth.uid();
 
 insert into public.exercise_definitions (user_id, key, display_name)
 values (auth.uid(), 'private_lift', 'Private Lift');
 
-insert into public.exercise_aliases (user_id, exercise_definition_id, alias)
+insert into public.exercise_aliases (user_id, exercise_definition_id, alias_normalized)
 select auth.uid(), e.id, 'my private lift'
 from public.exercise_definitions e where e.key = 'private_lift' and e.user_id = auth.uid();
 
@@ -171,14 +171,14 @@ insert into public.metric_definitions (user_id, key, display_name, canonical_uni
 select auth.uid(), 'private_metric', 'Private Metric', u.id, 'mean'
 from public.units u where u.key = 'kg' and u.user_id is null;
 
-insert into public.metric_aliases (user_id, metric_definition_id, alias)
+insert into public.metric_aliases (user_id, metric_definition_id, alias_normalized)
 select auth.uid(), d.id, 'my private column'
 from public.metric_definitions d where d.key = 'private_metric' and d.user_id = auth.uid();
 
 insert into public.exercise_definitions (user_id, key, display_name)
 values (auth.uid(), 'private_lift', 'Private Lift');
 
-insert into public.exercise_aliases (user_id, exercise_definition_id, alias)
+insert into public.exercise_aliases (user_id, exercise_definition_id, alias_normalized)
 select auth.uid(), e.id, 'my private lift'
 from public.exercise_definitions e where e.key = 'private_lift' and e.user_id = auth.uid();
 
@@ -480,7 +480,7 @@ begin
   end if;
 
   begin
-    insert into public.metric_aliases (user_id, metric_definition_id, alias)
+    insert into public.metric_aliases (user_id, metric_definition_id, alias_normalized)
     values (auth.uid(), b_definition, 'stolen alias');
     raise exception 'FAIL [W5] user A attached an alias to user B''s private definition';
   exception when insufficient_privilege then
