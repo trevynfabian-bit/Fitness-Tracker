@@ -18,6 +18,11 @@
     --input: 214 32% 91%;
     --ring: 222 47% 11%;
     --radius: 0.5rem;
+    /* Chart series. Slot 1 of the validated categorical palette; both charts
+       in this product are single-series, so identity never depends on hue.
+       Validated at >= 3:1 against this surface in both modes. */
+    --chart-1: 211 68% 50%;
+    --chart-grid: 214 32% 91%;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -35,6 +40,8 @@
       --border: 217 33% 20%;
       --input: 217 33% 20%;
       --ring: 213 27% 84%;
+      --chart-1: 211 76% 56%;
+      --chart-grid: 217 33% 20%;
     }
   }
 

@@ -124,6 +124,11 @@ test.describe("Phase 1 — auth and RLS against a real Supabase project", () => 
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     await expect(page.getByText(`Signed in as ${USER_A.email}`)).toBeVisible();
 
+    // The metric registry moved to /settings in Phase 4: it is reference data,
+    // not training history. The assertions below are unchanged.
+    await page.goto("/settings");
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+
     for (const key of [
       "weight",
       "body_fat_percentage",
@@ -152,8 +157,8 @@ test.describe("Phase 1 — auth and RLS against a real Supabase project", () => 
     await page.waitForURL("**/login");
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 
-    await page.goto("/dashboard");
-    await expect(page).toHaveURL(/\/login\?redirectTo=%2Fdashboard$/);
+    await page.goto("/settings");
+    await expect(page).toHaveURL(/\/login\?redirectTo=%2Fsettings$/);
     await expect(page.getByText("Metric registry")).toHaveCount(0);
   });
 
@@ -368,10 +373,11 @@ test.describe("Phase 1 — auth and RLS against a real Supabase project", () => 
   // Criteria 8 to 10 again, this time through the application UI
   // -------------------------------------------------------------------------
 
-  test("C8+C9 the dashboard shows each user only their own registry row", async ({
+  test("C8+C9 the registry page shows each user only their own registry row", async ({
     page,
   }) => {
     await logInThroughUi(page, USER_A);
+    await page.goto("/settings");
     await expect(page.getByRole("cell", { name: KEY_A, exact: true })).toBeVisible();
     await expect(page.getByRole("cell", { name: KEY_B, exact: true })).toHaveCount(0);
     await expect(page.getByRole("cell", { name: "yours", exact: true })).toHaveCount(1);
@@ -381,6 +387,7 @@ test.describe("Phase 1 — auth and RLS against a real Supabase project", () => 
     await page.waitForURL("**/login");
 
     await logInThroughUi(page, USER_B);
+    await page.goto("/settings");
     await expect(page.getByRole("cell", { name: KEY_B, exact: true })).toBeVisible();
     await expect(page.getByRole("cell", { name: KEY_A, exact: true })).toHaveCount(0);
     await expect(page.getByRole("cell", { name: "yours", exact: true })).toHaveCount(1);

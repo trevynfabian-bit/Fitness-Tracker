@@ -36,7 +36,9 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
             {record.source_key} · {record.template} · {record.import_mode} · status {record.status}
           </p>
         </div>
-        <Link href="/import" className="text-sm underline">All imports</Link>
+        <Link href="/import" className="whitespace-nowrap text-sm underline">
+          All imports
+        </Link>
       </header>
 
       <section className="mt-8">
@@ -95,7 +97,9 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
         <ul className="mt-2 divide-y divide-border rounded-md border border-border text-sm">
           {(workouts.data ?? []).map((w) => (
             <li key={w.id} className="flex justify-between gap-4 px-3 py-2">
-              <span>{w.title}</span>
+              <Link href={`/history/${w.id}`} className="hover:underline">
+                {w.title}
+              </Link>
               <span className="font-mono text-xs text-muted-foreground">{w.local_date}</span>
             </li>
           ))}

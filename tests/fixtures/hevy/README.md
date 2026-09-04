@@ -23,3 +23,17 @@ test passes against a real file". By that standard the Hevy profile is
 both hard gates are verified against this fixture, but the final acceptance step
 needs a real export dropped in at `hevy-export.csv`, after which the same suite
 re-runs unchanged.
+
+## Phase 4 addition
+
+`hevy-export-extended.csv` is `hevy-export.csv` plus six further sessions
+(19, 21, 23, 26, 28 and 30 January), used only by
+`tests/e2e/phase-4-product.spec.ts`. It exists because the Phase 4 product
+surface has to be exercised with exercises that reach the three sessions a
+progression chart requires, and the Phase 3 fixture is deliberately small —
+no exercise in it is performed more than twice. It carries the same provenance
+caveat as the file it extends, and it enters through the same profile,
+transforms and mapping engine as any other Hevy file.
+
+None of these files is loaded by the application. Nothing in the product seeds,
+generates or fabricates health data.

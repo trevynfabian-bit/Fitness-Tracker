@@ -27,7 +27,6 @@ export default async function ImportPage() {
             exactly what will happen before anything is written.
           </p>
         </div>
-        <Link href="/dashboard" className="text-sm underline">Dashboard</Link>
       </header>
 
       <div className="mt-8">

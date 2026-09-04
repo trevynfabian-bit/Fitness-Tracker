@@ -5,9 +5,10 @@ The product is the historical data foundation, not the dashboard.
 
 `CLAUDE.md` is the operating specification. Read it before changing anything.
 
-**Current state: Phase 1 (Foundation) complete.** There is no import pipeline,
-no canonical measurement tables and no health data. Nothing in this repository
-fabricates measurements.
+**Current state: Phases 1–4 complete.** Foundation and auth, the canonical
+schema, the Universal Import Engine with the Hevy slice, and the product
+surface that reads it. Nothing in this repository fabricates measurements: an
+account with no imports shows an empty state, never a zero-filled chart.
 
 ---
 
@@ -78,6 +79,34 @@ the message, and you land on the dashboard.
 A `full_snapshot` import that proposes retirements stops at a confirmation
 screen instead of retiring anything. That is deliberate, and the database
 enforces it independently of the UI.
+
+### The product surface
+
+Once an import has completed, six signed-in routes read it:
+
+| Route | What it is |
+|---|---|
+| `/dashboard` | Lifetime totals, weekly training frequency, weekly volume trend, recent activity |
+| `/history` | Every session, newest first, paginated server-side, with a title search and a date range |
+| `/history/[id]` | One session: its exercises, and only the set columns those exercises actually recorded |
+| `/exercises` | Every exercise performed, with what its data supports being compared on |
+| `/exercises/[id]` | One exercise: its progression on the axis its own sets carry, and every session |
+| `/settings` | Account and the metric registry |
+
+All six read through `public.training_*` functions (see
+`supabase/migrations/20260905090000_phase4_training_read_model.sql`). They are
+`SECURITY INVOKER` over the `v_*` views, take no user id, and are the only way
+the product reads training data. Phase 4 writes nothing: canonical rows come
+from the import pipeline and from nowhere else.
+
+Two definitions worth knowing, because the UI states them rather than assuming
+them:
+
+- **Volume** is `weight × reps`, summed over sets that record *both*. A plank
+  or a loaded carry contributes nothing rather than a zero, and a week with no
+  loaded set reports `NULL`, drawn as a gap.
+- **Frequency** counts workouts per ISO week over `local_date`. A week without
+  training is a real zero, and is drawn as one.
 
 ### Other useful commands
 
@@ -154,8 +183,11 @@ user's private parent row, which a foreign key alone would allow.
 npm run typecheck        # tsc --noEmit
 npm run test             # vitest: env validation, route classification, auth actions
 npm run test:rls         # RLS isolation with two authenticated users (needs Postgres)
+npm run test:phase2      # import layer + canonical schema constraints (needs Postgres)
+npm run test:step0       # provenance, reconciliation and alias safety (needs Postgres)
+npm run test:phase4      # the training read model, and hard gate D at 2,000 workouts
 npm run test:routes      # protected routes reject unauthenticated access (builds + serves)
-npm run test:e2e         # real signup/confirm/login/logout + RLS (needs `supabase start`)
+npm run test:e2e         # real signup/confirm/login/logout, the Hevy import, the product surface
 npm run test:all         # all of the above
 ```
 
@@ -170,3 +202,8 @@ it. To run it against a hosted project instead, export
 `npm run test:rls` rebuilds a throwaway database from the committed migrations
 and seed, then runs every assertion as the `authenticated` Postgres role with a
 JWT subject claim. The service role is never used to validate a policy.
+
+`npm run test:phase4` does the same for the read model: it builds a canonical
+training history with an empty week, a retired workout, and one exercise of
+every progression kind, asserts every function against it, and then rebuilds at
+2,000 workouts and 30,000 sets to time the queries a page actually issues.
