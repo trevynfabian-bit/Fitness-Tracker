@@ -56,6 +56,15 @@ as $$
   )::text
 $$;
 
+-- Supabase grants ALL on every newly created public table to the Data API
+-- roles by default (the `auto_expose_new_tables` cloud default). A migration
+-- that creates a table and only ADDS grants therefore leaves the defaults in
+-- place. Replicating that here is what makes this harness able to catch such a
+-- migration; without it the harness reports privileges the real database does
+-- not have.
+alter default privileges in schema public
+  grant all on tables to anon, authenticated, service_role;
+
 grant usage on schema auth to anon, authenticated, service_role;
 grant execute on function auth.uid() to anon, authenticated, service_role;
 grant execute on function auth.role() to anon, authenticated, service_role;
