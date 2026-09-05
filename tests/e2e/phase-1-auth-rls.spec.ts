@@ -143,7 +143,20 @@ test.describe("Phase 1 — auth and RLS against a real Supabase project", () => 
       await expect(page.getByRole("cell", { name: key, exact: true })).toBeVisible();
     }
 
-    await expect(page.getByRole("cell", { name: "system", exact: true })).toHaveCount(9);
+    // Every system definition is shown and labelled as system. The expected
+    // number is read from the database through the user's own session rather
+    // than hard-coded: later phases seed more definitions, and the property
+    // being asserted is that the page shows all of them.
+    const { client } = await signedInClient(USER_A);
+    const { count: systemCount } = await client
+      .from("metric_definitions")
+      .select("key", { count: "exact", head: true })
+      .is("user_id", null);
+    expect(systemCount ?? 0).toBeGreaterThanOrEqual(9);
+    await expect(page.getByRole("cell", { name: "system", exact: true })).toHaveCount(
+      systemCount!,
+    );
+    await client.auth.signOut();
   });
 
   // -------------------------------------------------------------------------
@@ -291,17 +304,24 @@ test.describe("Phase 1 — auth and RLS against a real Supabase project", () => 
       const systemKeys = (data ?? []).filter((row) => row.user_id === null).map((r) => r.key);
       const userKeys = (data ?? []).filter((row) => row.user_id !== null).map((r) => r.key);
 
-      expect(systemKeys.sort()).toEqual([
-        "active_energy",
-        "body_fat_percentage",
-        "heart_rate_variability",
-        "recovery_score",
-        "resting_heart_rate",
-        "sleep_duration",
-        "steps",
-        "waist_circumference",
-        "weight",
-      ]);
+      // The nine Phase 1 metrics must all be readable. Later phases seed more
+      // (Phase 5 added the training metrics), so this asserts the containment
+      // that criterion 10 is actually about — every system row is visible to
+      // every user — rather than pinning a list that grows by design.
+      expect(systemKeys.sort()).toEqual(
+        expect.arrayContaining([
+          "active_energy",
+          "body_fat_percentage",
+          "heart_rate_variability",
+          "recovery_score",
+          "resting_heart_rate",
+          "sleep_duration",
+          "steps",
+          "waist_circumference",
+          "weight",
+        ]),
+      );
+      expect(new Set(systemKeys).size, "system keys must be unique").toBe(systemKeys.length);
       expect(userKeys).toEqual([ownKey]);
       expect(userKeys).not.toContain(otherKey);
     }

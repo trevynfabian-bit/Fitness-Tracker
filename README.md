@@ -5,10 +5,14 @@ The product is the historical data foundation, not the dashboard.
 
 `CLAUDE.md` is the operating specification. Read it before changing anything.
 
-**Current state: Phases 1–4 complete.** Foundation and auth, the canonical
-schema, the Universal Import Engine with the Hevy slice, and the product
-surface that reads it. Nothing in this repository fabricates measurements: an
-account with no imports shows an empty state, never a zero-filled chart.
+**Current state: Phases 1–5 complete.** Foundation and auth, the canonical
+schema, the Universal Import Engine with the Hevy slice, the product surface
+that reads it, and the analytics layer underneath it. Nothing in this
+repository fabricates measurements: an account with no imports shows an empty
+state, never a zero-filled chart.
+
+`docs/roadmap.md` is the authoritative statement of what is built and what
+comes next.
 
 ---
 
@@ -74,7 +78,9 @@ the message, and you land on the dashboard.
      -H "x-worker-secret: $IMPORT_WORKER_SECRET"
    ```
 
-   Run it again until it reports `"batches": 0`. Then reload the import page.
+   Run it again until it reports `"batches": 0` and `"rollup": {"processed": 0}`.
+   Then reload the import page. The same call drains the analytics queue, so
+   one worker run both imports the file and brings the dashboard up to date.
 
 A `full_snapshot` import that proposes retirements stops at a confirmation
 screen instead of retiring anything. That is deliberate, and the database
@@ -93,11 +99,17 @@ Once an import has completed, six signed-in routes read it:
 | `/exercises/[id]` | One exercise: its progression on the axis its own sets carry, and every session |
 | `/settings` | Account and the metric registry |
 
-All six read through `public.training_*` functions (see
-`supabase/migrations/20260905090000_phase4_training_read_model.sql`). They are
-`SECURITY INVOKER` over the `v_*` views, take no user id, and are the only way
-the product reads training data. Phase 4 writes nothing: canonical rows come
-from the import pipeline and from nowhere else.
+All six read through `public.training_*` functions. They are `SECURITY
+INVOKER`, take no user id, and are the only way the product reads training
+data. Neither Phase 4 nor Phase 5 writes a canonical row: those come from the
+import pipeline and from nowhere else.
+
+Four of those functions read the **derived daily series** built in Phase 5
+(`training_overview`, `training_weekly_series`, `training_exercise_summaries`,
+`training_exercise_detail`); three still read canonical data, because they ask
+questions at a grain the analytics layer does not hold and are already bounded
+by their own page limit (`training_workout_summaries`,
+`training_workout_detail`, `training_exercise_progression`).
 
 Two definitions worth knowing, because the UI states them rather than assuming
 them:
@@ -107,6 +119,37 @@ them:
   loaded set reports `NULL`, drawn as a gap.
 - **Frequency** counts workouts per ISO week over `local_date`. A week without
   training is a real zero, and is drawn as one.
+
+### The analytics layer
+
+Canonical training data → invalidation → queue → recomputation → derived
+metrics → read model → UI.
+
+| Object | What it is |
+|---|---|
+| `rollup_queue` | Dirty scopes. One scope is one `(user, day)`. At most one pending row per scope, so enqueuing twice is free |
+| `metric_daily_source` | Tier 1: what one source said about one metric on one day, plus the canonical workout ids it was computed from |
+| `metric_daily` | Tier 2: the resolved daily series the dashboard reads |
+| `exercise_daily_source` / `exercise_daily` | The same two tiers at `(user, exercise, day)` |
+| `source_precedence` | Which source wins when several report the same metric on the same day |
+
+A day is marked dirty when the normalize stage finishes writing canonical rows
+and when a retirement is applied. Nothing uses a database trigger (ADR-19), and
+nothing adjusts a stored total by an arithmetic delta: a dirty scope is deleted
+and rebuilt from canonical truth, which is why recomputation is idempotent and
+why a crashed worker needs no repair beyond running the scope again.
+
+Derived metrics are disposable. To rebuild everything for one user:
+
+```sql
+select public.rollup_rebuild_user('<user-uuid>');
+select public.rollup_process_pending();
+```
+
+**After deploying the Phase 5 migration**, run the worker once (or the two
+statements above): the migration marks every existing training day dirty but
+computes nothing itself, so until the queue is drained the dashboard reads
+zero.
 
 ### Other useful commands
 
@@ -186,6 +229,7 @@ npm run test:rls         # RLS isolation with two authenticated users (needs Pos
 npm run test:phase2      # import layer + canonical schema constraints (needs Postgres)
 npm run test:step0       # provenance, reconciliation and alias safety (needs Postgres)
 npm run test:phase4      # the training read model, and hard gate D at 2,000 workouts
+npm run test:phase5      # the analytics layer: correctness, retirement, recovery, benchmark
 npm run test:routes      # protected routes reject unauthenticated access (builds + serves)
 npm run test:e2e         # real signup/confirm/login/logout, the Hevy import, the product surface
 npm run test:all         # all of the above
@@ -207,3 +251,9 @@ JWT subject claim. The service role is never used to validate a policy.
 training history with an empty week, a retired workout, and one exercise of
 every progression kind, asserts every function against it, and then rebuilds at
 2,000 workouts and 30,000 sets to time the queries a page actually issues.
+
+`npm run test:phase5` computes every figure twice — once by aggregating
+canonical data, once from the derived series — and compares them, then retires
+data, corrects data, crashes a worker mid-scope, and rebuilds the whole
+analytics layer from scratch, checking the values after each. Its benchmark
+asks the same three product questions both ways over one 37,000-set dataset.

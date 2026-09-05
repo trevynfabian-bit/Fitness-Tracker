@@ -367,7 +367,16 @@ declare
     array['v_metrics','SELECT'],
     array['v_strength_workouts','SELECT'],
     array['v_strength_exercises','SELECT'],
-    array['v_strength_sets','SELECT']
+    array['v_strength_sets','SELECT'],
+    -- Phase 5 analytics layer. The user owns their source preference; every
+    -- derived table is read-only to the client, because analytics are produced
+    -- by the rollup and by nothing else (the same rule as I-4 / RD-3).
+    array['source_precedence','SELECT,INSERT,UPDATE,DELETE'],
+    array['metric_daily_source','SELECT'],
+    array['metric_daily','SELECT'],
+    array['exercise_daily_source','SELECT'],
+    array['exercise_daily','SELECT'],
+    array['rollup_queue','SELECT']
   ];
   row_i int;
   obj text;
@@ -413,7 +422,9 @@ begin
        'import_profiles','data_imports','import_jobs','raw_records','import_coverage',
        'reconciliation_plans','retirement_overrides',
        'metrics','strength_workouts','strength_exercises','strength_sets',
-       'v_metrics','v_strength_workouts','v_strength_exercises','v_strength_sets'
+       'v_metrics','v_strength_workouts','v_strength_exercises','v_strength_sets',
+       'source_precedence','metric_daily_source','metric_daily',
+       'exercise_daily_source','exercise_daily','rollup_queue'
      );
   if missing is not null then
     raise exception 'FAIL [PRIV] objects exist that the privilege matrix does not cover: %', missing;

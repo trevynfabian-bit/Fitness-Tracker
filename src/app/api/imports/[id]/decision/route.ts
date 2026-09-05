@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { daysForNaturalKeys, daysForWorkoutIds, enqueueTrainingDays } from "@/lib/analytics/rollup";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -105,6 +106,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   if (body.decision === "skipped") {
     // Append-only fallback. Nothing is retired; the import simply completes.
+    // The normalize stage already enqueued the days this file wrote to; this
+    // covers the case where the decision is what finally makes them count.
+    await enqueueAffectedDays(service, auth.user.id, plan);
     await service
       .from("data_imports")
       .update({
@@ -134,6 +138,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ error: `retire refused: ${retireError.message}` }, { status: 409 });
   }
 
+  // Retirement changes what the analytics layer may count, on exactly the days
+  // the retired workouts sat on. Those days are dirty now (ADR-19). The ids are
+  // read back from the UPDATE, so the scope is what was actually retired rather
+  // than what the plan proposed.
+  await enqueueRetiredDays(service, auth.user.id, (retired ?? []).map((r) => r.id as string));
+
   await service
     .from("data_imports")
     .update({
@@ -145,4 +155,36 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     .eq("user_id", auth.user.id);
 
   return NextResponse.json({ decision: "confirmed", retired: (retired ?? []).length });
+}
+
+/**
+ * Analytics enqueue failures must not fail a decision the user already made.
+ * Derived metrics are a regenerable leaf; a retirement is not. The scope stays
+ * dirty and the next enqueue or rebuild picks it up.
+ */
+async function enqueueAffectedDays(
+  service: ReturnType<typeof createServiceClient>,
+  userId: string,
+  plan: { retire_natural_keys: unknown },
+): Promise<void> {
+  try {
+    const keys = (plan.retire_natural_keys as string[]) ?? [];
+    const dates = await daysForNaturalKeys(service, userId, keys);
+    await enqueueTrainingDays(service, userId, dates, "retirement");
+  } catch (cause) {
+    console.error("rollup enqueue after decision:", cause instanceof Error ? cause.message : cause);
+  }
+}
+
+async function enqueueRetiredDays(
+  service: ReturnType<typeof createServiceClient>,
+  userId: string,
+  workoutIds: string[],
+): Promise<void> {
+  try {
+    const dates = await daysForWorkoutIds(service, userId, workoutIds);
+    await enqueueTrainingDays(service, userId, dates, "retirement");
+  } catch (cause) {
+    console.error("rollup enqueue after retirement:", cause instanceof Error ? cause.message : cause);
+  }
 }

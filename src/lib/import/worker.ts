@@ -16,6 +16,7 @@ import {
   retireRatio,
   type ReconciliationInput,
 } from "./reconciliation";
+import { daysForNaturalKeys, enqueueTrainingDays } from "@/lib/analytics/rollup";
 import { mappingSpecSchema, type MappingSpec, type RegistrySnapshot } from "./types";
 
 /**
@@ -363,6 +364,14 @@ async function runNormalize(db: Db, job: JobRow): Promise<BatchOutcome> {
 
   await setJob(db, job.id, { state: "done", finished_at: new Date().toISOString(), cursor: { last_raw_id: cursor } });
 
+  // The canonical writes for this import are complete, so the days they landed
+  // on are now dirty (ADR-19). This is the earliest honest moment to enqueue:
+  // a preview writes nothing, and a half-normalized import has already written
+  // canonical rows that the read model can see, so waiting for the import to
+  // reach a terminal status would leave derived metrics disagreeing with
+  // canonical truth in exactly the case where that is hardest to notice.
+  await enqueueTouchedDays(db, job);
+
   if (record.import_mode === "full_snapshot") {
     await setImport(db, job.import_id, { status: "planning_reconciliation" });
     await enqueue(db, job, "retire");
@@ -378,6 +387,37 @@ async function runNormalize(db: Db, job: JobRow): Promise<BatchOutcome> {
     cursor: { last_raw_id: cursor },
     message: `normalize complete: ${added} added, ${updated} updated, ${unchanged} unchanged, ${invalid} invalid`,
   };
+}
+
+/**
+ * Marks every day this import's rows landed on as dirty.
+ *
+ * The days come from the natural keys the file produced, not from which rows
+ * carry this import_id: a re-import whose rows are all unchanged stamps no
+ * import_id at all, and the file still determines which days it covered.
+ *
+ * A failure here must not fail the import. Analytics are a regenerable leaf
+ * (v2 section 1.4) and the queue can be rebuilt; canonical data is not and
+ * cannot. The scope is left dirty and the next enqueue or rebuild picks it up.
+ */
+async function enqueueTouchedDays(db: Db, job: JobRow): Promise<void> {
+  try {
+    const { data, error } = await db
+      .from("raw_records")
+      .select("normalized_keys")
+      .eq("import_id", job.import_id)
+      .eq("normalize_status", "ok");
+    if (error) throw new Error(error.message);
+
+    const keys = [...new Set((data ?? []).flatMap((r) => (r.normalized_keys as string[]) ?? []))];
+    const dates = await daysForNaturalKeys(db, job.user_id, keys);
+    await enqueueTrainingDays(db, job.user_id, dates, "import");
+  } catch (cause) {
+    console.error(
+      `rollup enqueue failed for import ${job.import_id}:`,
+      cause instanceof Error ? cause.message : cause,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

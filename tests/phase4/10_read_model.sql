@@ -233,6 +233,33 @@ end
 $$;
 
 -- ---------------------------------------------------------------------------
+-- 0b. Roll the fixture up.
+--
+-- Phase 5 moved four of these functions onto the derived daily series, so a
+-- fixture written straight into the canonical tables has to go through the
+-- same invalidation path the import pipeline uses. This is the mechanism, not
+-- a test shortcut: enqueue the affected scopes, drain the queue.
+-- ---------------------------------------------------------------------------
+
+select public.rollup_rebuild_user('77777777-7777-4777-8777-777777777777') as scopes_a \gset
+select public.rollup_rebuild_user('88888888-8888-4888-8888-888888888888') as scopes_b \gset
+select public.rollup_process_pending(1000, 'phase4-suite') as rollup_result \gset
+
+do $$
+declare pending bigint; failed bigint;
+begin
+  select count(*) filter (where state = 'pending'),
+         count(*) filter (where state = 'failed')
+    into pending, failed
+    from public.rollup_queue;
+  if pending <> 0 or failed <> 0 then
+    raise exception 'FAIL [0b] rollup left % pending and % failed scopes', pending, failed;
+  end if;
+  raise notice 'PASS [0b] fixture rolled up: every scope processed';
+end
+$$;
+
+-- ---------------------------------------------------------------------------
 -- 1. Privilege: anon may not execute any read-model function.
 -- ---------------------------------------------------------------------------
 

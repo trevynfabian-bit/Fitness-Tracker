@@ -1,0 +1,17 @@
+title,start_time,end_time,description,exercise_title,superset_id,exercise_notes,set_index,set_type,weight_kg,reps,distance_km,duration_seconds,rpe
+Push Day,2026-01-05 18:03:00,2026-01-05 19:01:00,,Bench Press (Barbell),,,0,warmup,40,10,,,
+Push Day,2026-01-05 18:03:00,2026-01-05 19:01:00,,Bench Press (Barbell),,,1,normal,60,8,,,7
+Push Day,2026-01-05 18:03:00,2026-01-05 19:01:00,,Bench Press (Barbell),,,2,normal,60,8,,,8
+Push Day,2026-01-05 18:03:00,2026-01-05 19:01:00,,Bench Press (Barbell),,,3,failure,62.5,6,,,9.5
+Push Day,2026-01-05 18:03:00,2026-01-05 19:01:00,,Overhead Press (Barbell),,,0,normal,35,10,,,7
+Push Day,2026-01-05 18:03:00,2026-01-05 19:01:00,,Overhead Press (Barbell),,,1,normal,35,9,,,8
+Pull Day,2026-01-07 07:12:00,2026-01-07 08:00:00,,Lat Pulldown (Cable),1,,0,normal,50,12,,,
+Pull Day,2026-01-07 07:12:00,2026-01-07 08:00:00,,Bent Over Row (Barbell),1,,0,normal,55,10,,,
+Pull Day,2026-01-07 07:12:00,2026-01-07 08:00:00,,Lat Pulldown (Cable),1,,1,normal,50,11,,,
+Pull Day,2026-01-07 07:12:00,2026-01-07 08:00:00,,Bent Over Row (Barbell),1,,1,normal,55,10,,,
+Push Day,2026-01-12 18:00:00,2026-01-12 19:05:00,,Bench Press (Barbell),,,0,warmup,40,10,,,
+Push Day,2026-01-12 18:00:00,2026-01-12 19:05:00,,Bench Press (Barbell),,,1,normal,62.5,8,,,8
+Push Day,2026-01-12 18:00:00,2026-01-12 19:05:00,,Incline Bench Press (Dumbbell),,,0,normal,24,10,,,7
+Pull Day,2026-01-14 07:05:00,2026-01-14 08:02:00,,Lat Pulldown (Cable),,,0,normal,55,10,,,8
+Pull Day,2026-01-14 07:05:00,2026-01-14 08:02:00,,Deadlift (Barbell),,,0,normal,120,3,,,9
+Pull Day,2026-01-14 07:05:00,2026-01-14 08:02:00,,Deadlift (Barbell),,,1,normal,120,3,,,9.5

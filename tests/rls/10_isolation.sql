@@ -222,6 +222,16 @@ begin
 end
 $$;
 
+-- The number of system metric definitions is counted here, on the privileged
+-- connection, rather than hard-coded: seeds add definitions as later phases
+-- introduce metrics, and the property being asserted is "the user sees every
+-- system row and not one more", which a magic number stops expressing the
+-- moment the registry grows.
+create temporary table rls_expected as
+  select count(*) as system_metric_definitions
+    from public.metric_definitions where user_id is null;
+grant select on rls_expected to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 4. CRITERION 1 — User A can read its own rows
 -- ---------------------------------------------------------------------------
@@ -231,8 +241,9 @@ set local request.jwt.claims = :'claims_a';
 set local role authenticated;
 
 do $$
-declare own bigint; sys bigint;
+declare own bigint; sys bigint; expected_sys bigint;
 begin
+  select system_metric_definitions into expected_sys from rls_expected;
   select (select count(*) from public.sources              where user_id = auth.uid())
        + (select count(*) from public.units                where user_id = auth.uid())
        + (select count(*) from public.unit_conversions     where user_id = auth.uid())
@@ -248,11 +259,11 @@ begin
   end if;
 
   select count(*) into sys from public.metric_definitions where user_id is null;
-  if sys <> 9 then
-    raise exception 'FAIL [C1] user A sees % system metric definitions, expected 9', sys;
+  if sys <> expected_sys then
+    raise exception 'FAIL [C1] user A sees % system metric definitions, expected %', sys, expected_sys;
   end if;
 
-  raise notice 'PASS [C1] user A reads all 9 of its own registry rows and all 9 system metric definitions';
+  raise notice 'PASS [C1] user A reads all 9 of its own registry rows and all % system metric definitions', expected_sys;
 end
 $$;
 
@@ -267,8 +278,9 @@ set local request.jwt.claims = :'claims_b';
 set local role authenticated;
 
 do $$
-declare own bigint; sys bigint;
+declare own bigint; sys bigint; expected_sys bigint;
 begin
+  select system_metric_definitions into expected_sys from rls_expected;
   select (select count(*) from public.sources              where user_id = auth.uid())
        + (select count(*) from public.units                where user_id = auth.uid())
        + (select count(*) from public.unit_conversions     where user_id = auth.uid())
@@ -284,11 +296,11 @@ begin
   end if;
 
   select count(*) into sys from public.metric_definitions where user_id is null;
-  if sys <> 9 then
-    raise exception 'FAIL [C2] user B sees % system metric definitions, expected 9', sys;
+  if sys <> expected_sys then
+    raise exception 'FAIL [C2] user B sees % system metric definitions, expected %', sys, expected_sys;
   end if;
 
-  raise notice 'PASS [C2] user B reads all 9 of its own registry rows and all 9 system metric definitions';
+  raise notice 'PASS [C2] user B reads all 9 of its own registry rows and all % system metric definitions', expected_sys;
 end
 $$;
 

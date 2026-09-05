@@ -118,6 +118,46 @@ end
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Roll the scale fixture up, and time that too: the rollup's own cost is part
+-- of what Phase 5 has to justify.
+-- ---------------------------------------------------------------------------
+
+do $$
+declare
+  started    timestamptz;
+  elapsed_ms numeric;
+  scopes     integer;
+  result     jsonb;
+begin
+  started := clock_timestamp();
+  select public.rollup_rebuild_user('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+       + public.rollup_rebuild_user('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+    into scopes;
+  elapsed_ms := extract(epoch from clock_timestamp() - started) * 1000;
+  raise notice 'PASS [D] enqueued % scopes in % ms', scopes, round(elapsed_ms);
+
+  started := clock_timestamp();
+  select public.rollup_process_pending(5000, 'scale-suite') into result;
+  elapsed_ms := extract(epoch from clock_timestamp() - started) * 1000;
+  if (result->>'failed')::int <> 0 then
+    raise exception 'FAIL [D] rollup reported failures: %', result;
+  end if;
+  raise notice 'PASS [D] rolled up % scopes in % ms (% ms per scope)',
+    result->>'processed', round(elapsed_ms),
+    round(elapsed_ms / greatest((result->>'processed')::numeric, 1), 2);
+
+  if (select count(*) from public.rollup_queue where state <> 'done') <> 0 then
+    raise exception 'FAIL [D] scopes remain unprocessed';
+  end if;
+end
+$$;
+
+analyze public.metric_daily;
+analyze public.metric_daily_source;
+analyze public.exercise_daily;
+analyze public.exercise_daily_source;
+
+-- ---------------------------------------------------------------------------
 -- Timing, as the authenticated role, through the same functions the product
 -- calls. The budget is deliberately loose: this catches an accidental full
 -- scan or an N+1 shaped query, not a millisecond regression.
