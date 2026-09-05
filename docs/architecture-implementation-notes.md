@@ -181,3 +181,61 @@ second source appears, the situation is visible in the data rather than silent.
 **The signal to revisit.** The first `metric_daily` or `exercise_daily` row with
 `source_count > 1`. That is the moment to decide, deliberately, between
 precedence and resolution — not before.
+
+---
+
+## N-8. G4 is a safety gate with an audited override, not a prohibition
+
+**Status:** accepted for Phase 5.1. Authority: v3 §4.3, which always described
+G4 and G6 as overridable; explicit user direction on the resolution.
+
+**The contradiction this closes.** Phase 3 built three quarters of an override.
+The engine reported G4 as overridable, the UI offered "Override G4 and retire"
+with a typed confirmation, and `retirement_overrides` existed to record it. The
+persistence layer disagreed, in three places: a CHECK constraint
+(`reconciliation_plans_blocked_is_never_confirmed`), the retiring-status
+trigger, and the retirement guard all required `verdict <> 'blocked'`. The
+decision route sealed it by returning 409 for any confirmation of a blocked
+plan before it looked at the override fields. The product therefore offered an
+action the system could not complete.
+
+**The model now.** A blocked plan is confirmable exactly when **every** guard
+that blocked it carries an acknowledged override row belonging to the plan's
+owner. That predicate,
+`public.reconciliation_plan_override_is_complete(plan_id)`, is the single
+definition, consulted by the confirmation trigger, the retiring-status trigger
+and the retirement guard.
+
+**Why the distinction is relational rather than a flag.** The question "was
+this retired normally, or through an explicit override of a safety block?" is
+answered by two existing facts — the plan's `verdict`, and whether override
+rows exist for it — not by a new boolean that could drift from them.
+`v_retirement_audit` derives `was_safety_override` from those facts. The
+verdict is never rewritten: a plan G4 blocked still reads `blocked` after an
+override, forever.
+
+**Why G9 needs no special case.** `retirement_overrides_guard_overridable`
+already makes an override row unwritable for any guard outside {G4, G6}. A plan
+G9 blocked therefore can never satisfy "every blocking guard has an override".
+The absolute guard stays absolute because the audit table refuses to record the
+thing that would excuse it — and the retirement guard evaluates G9 a second
+time, on the row's own provenance, with no override path at all.
+
+**Where the requirements live.** In the database. The client holds INSERT on
+`retirement_overrides` because the row is the user's own typed confirmation, so
+the requirements are enforced by a BEFORE INSERT trigger rather than by the
+route: the guard must really have blocked this plan, the typed confirmation is
+checked against the plan's own `retire_count`, the acknowledgement must be
+given, a reason of at least ten characters is required, and the guard evidence
+is copied from the plan rather than accepted from the caller. A client that
+skips the API gains nothing.
+
+**What an override does not buy.** Only permission to proceed past a blocked
+verdict. It does not relax G9, the persisted key set, plan immutability, the
+one-confirmed-plan-per-import rule, the 24-hour staleness window, or the
+retirement guard. There is no second retirement implementation: the override
+path executes the same lifecycle, and the same analytics invalidation follows.
+
+**The signal to revisit.** A guard becoming overridable that is not a coverage
+or volume heuristic. The overridable set is a deliberate list, and widening it
+is a decision about what the guards are for, not a configuration change.

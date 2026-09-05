@@ -5,6 +5,8 @@ import {
   blockingGuards,
   evaluateGuards,
   OVERRIDABLE_GUARDS,
+  OVERRIDE_MIN_REASON_LENGTH,
+  overrideAvailability,
   retireDateHistogram,
   retireKeySample,
   type ReconciliationInput,
@@ -153,5 +155,58 @@ describe("what the confirmation screen is given", () => {
   it("reports the guards that actually blocked", () => {
     const { results } = guard({ incomingInScopeCount: 1, retirementsFromManual: 2 });
     expect(blockingGuards(results).map((r) => r.id).sort()).toEqual(["G4", "G9"]);
+  });
+});
+
+describe("override availability (Phase 5.1)", () => {
+  const guard = (id: string, outcome: string, overridable: boolean) =>
+    ({ id, outcome, detail: `${id} ${outcome}`, overridable }) as never;
+
+  it("offers no override when nothing blocked", () => {
+    const availability = overrideAvailability([guard("G4", "pass", true)]);
+    expect(availability.available).toBe(false);
+    expect(availability.overridable).toEqual([]);
+  });
+
+  it("offers an override when every blocking guard has one", () => {
+    const availability = overrideAvailability([
+      guard("G4", "blocked", true),
+      guard("G6", "warn", true),
+    ]);
+    expect(availability.available).toBe(true);
+    expect(availability.overridable).toEqual(["G4"]);
+    expect(availability.nonOverridable).toEqual([]);
+  });
+
+  it("requires an override to cover EVERY blocking guard", () => {
+    // Overriding one of two would leave the plan blocked while implying the
+    // user had dealt with it. The database enforces the same rule.
+    const availability = overrideAvailability([
+      guard("G4", "blocked", true),
+      guard("G6", "blocked", true),
+    ]);
+    expect(availability.available).toBe(true);
+    expect(availability.overridable).toEqual(["G4", "G6"]);
+  });
+
+  it("offers nothing when a non-overridable guard is among the blockers", () => {
+    const availability = overrideAvailability([
+      guard("G4", "blocked", true),
+      guard("G9", "blocked", false),
+    ]);
+    expect(availability.available).toBe(false);
+    expect(availability.nonOverridable).toEqual(["G9"]);
+    expect(availableDecisions([
+      guard("G4", "blocked", true),
+      guard("G9", "blocked", false),
+    ]).canOverride).toEqual([]);
+  });
+
+  it("G9 is never overridable, whatever a guard result claims", () => {
+    expect(OVERRIDABLE_GUARDS.has("G9" as never)).toBe(false);
+  });
+
+  it("names a minimum reason length the database also enforces", () => {
+    expect(OVERRIDE_MIN_REASON_LENGTH).toBeGreaterThanOrEqual(10);
   });
 });

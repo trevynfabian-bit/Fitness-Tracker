@@ -39,7 +39,8 @@ stand.
 | **2** | Canonical data architecture | **Complete** | `import_profiles`, `data_imports`, `import_jobs`, `raw_records`, `import_coverage`; canonical `metrics`, `strength_workouts`, `strength_exercises`, `strength_sets`; append-only trigger, natural keys, revision strategy, canonical views, privilege lockdown |
 | **3** | Import, normalization, provenance, reconciliation | **Complete** | Universal Import Engine: profiling, detection, declarative mapping, closed transform library, preview, confirmation, checkpointed worker; Hevy as a profile JSON plus fixture; reconciliation plans, guards G1–G10, database-enforced retirement |
 | **4** | Training product surface | **Complete** | The Phase 4 read model (`training_*` functions) and the six signed-in screens: dashboard, workout history, workout detail, exercise explorer, exercise progression, settings |
-| **5** | Analytics foundation and incremental derived metrics | **In progress** | `source_precedence`, `metric_daily_source` → `metric_daily`, `exercise_daily_source` → `exercise_daily`, `rollup_queue`, invalidation and recomputation, rollup worker, read model migrated onto derived metrics |
+| **5** | Analytics foundation and incremental derived metrics | **Complete** | `source_precedence`, `metric_daily_source` → `metric_daily`, `exercise_daily_source` → `exercise_daily`, `rollup_queue`, invalidation and recomputation, rollup worker, read model migrated onto derived metrics |
+| **5.1** | Reconciliation G4 override resolution | **Complete** | G4 becomes a safety gate with an audited human override: a blocked plan is confirmable only when every guard that blocked it carries an acknowledged, attributable, reasoned override. See `docs/architecture-implementation-notes.md` N-8 |
 | **6** | Manual body tracking | Not started | Manual entry and correction through synthetic imports; the work v2 §12 placed at Phase 4 |
 | **7** | Body and recovery charts | Not started | Weight, body fat, waist, HRV, RHR, sleep rendered from `metric_daily`; ranges, gap policy, minimum-observation gates. The infrastructure Phase 5 builds; the metrics Phase 6 produces |
 
@@ -72,6 +73,15 @@ canonical truth, exactly as v2 §1.4 requires of derived data.
 *Consequence:* when Phase 6 lands body scalars in `metrics`, they roll up
 through the same `metric_daily_source` → `metric_daily` path with no new
 infrastructure, which is what v2 §9 intended.
+
+**SC-4. G4 is a safety gate, not a prohibition.**
+*Authority:* v3 §4.3, which always made G4 and G6 overridable; explicit user
+direction to resolve the contradiction.
+*What this fixes:* Phase 3 shipped an override the persistence layer refused,
+so the product offered an action it could not complete. Phase 5.1 makes the
+capability real and enforces its requirements in the database.
+*What did not change:* G9 remains absolute, the verdict is never rewritten, and
+an override buys permission to proceed past a blocked verdict and nothing else.
 
 **SC-3. `CLAUDE.md` §6 narrowed on two lines.**
 "Derived metrics" as an out-of-scope item meant v3 Phase 7's formula-versioned

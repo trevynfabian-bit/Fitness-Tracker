@@ -194,9 +194,52 @@ export function blockingGuards(results: GuardResult[]): GuardResult[] {
 }
 
 /**
+ * The shortest reason that counts as one.
+ *
+ * Not a test of sincerity. It is enough to stop an empty string or a single
+ * keystroke from standing, in the audit trail, as the recorded justification
+ * for retiring history. The database enforces the same minimum at insert time.
+ */
+export const OVERRIDE_MIN_REASON_LENGTH = 10;
+
+export type OverrideAvailability = {
+  /** True when every guard that blocked can be overridden by the owner. */
+  available: boolean;
+  /** The blocking guards an override would have to cover. */
+  overridable: GuardId[];
+  /** Blocking guards with no override path. G9 is always in this set. */
+  nonOverridable: GuardId[];
+};
+
+/**
+ * Whether a blocked plan can be overridden at all, and by covering what.
+ *
+ * An override is all-or-nothing across the blocking guards: overriding one of
+ * two blocks would leave the plan blocked while implying the user had dealt
+ * with it. If any blocking guard has no override path — G9 always, and every
+ * structural guard — the whole plan is unoverridable and the only ways forward
+ * are the append-only fallback or cancelling.
+ */
+export function overrideAvailability(results: GuardResult[]): OverrideAvailability {
+  const blocked = blockingGuards(results);
+  const nonOverridable = blocked.filter((r) => !r.overridable).map((r) => r.id);
+  const overridable = blocked.filter((r) => r.overridable).map((r) => r.id);
+  return {
+    available: blocked.length > 0 && nonOverridable.length === 0,
+    overridable,
+    nonOverridable,
+  };
+}
+
+/**
  * What the user may do next. Append-only is always available: it completes the
  * import as a pure append, adding and updating without retiring anything, and
  * v3 section 4.1 requires it to be a single click.
+ *
+ * canOverride names the guards an explicit override would have to cover. Since
+ * Phase 5.1 that is a real capability rather than a claim the persistence layer
+ * contradicts: a blocked plan is confirmable exactly when every guard in this
+ * list carries an acknowledged override.
  */
 export function availableDecisions(results: GuardResult[]): {
   canConfirm: boolean;
@@ -204,10 +247,10 @@ export function availableDecisions(results: GuardResult[]): {
   appendOnlyAvailable: true;
 } {
   const blocked = blockingGuards(results);
-  const nonOverridable = blocked.filter((r) => !r.overridable);
+  const availability = overrideAvailability(results);
   return {
     canConfirm: blocked.length === 0,
-    canOverride: nonOverridable.length > 0 ? [] : blocked.map((r) => r.id),
+    canOverride: availability.available ? availability.overridable : [],
     appendOnlyAvailable: true,
   };
 }

@@ -6,8 +6,14 @@ import { useRouter } from "next/navigation";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  OVERRIDE_MIN_REASON_LENGTH,
+  overrideAvailability,
+  type GuardResult,
+} from "@/lib/import/reconciliation";
 
-type Guard = { id: string; outcome: string; detail: string; overridable: boolean };
+type Guard = GuardResult;
 
 export type Plan = {
   id: string;
@@ -33,18 +39,29 @@ export type Plan = {
  *
  * "Import without retiring" is the recommended action and is always one click,
  * because a partial export is the common cause of a large retirement.
+ *
+ * A blocked plan can still be confirmed, but only through the override block
+ * below, and it is deliberately not one click. Phase 5.1 made that a real
+ * capability rather than a button the backend could never honour; the price of
+ * making it real is that it has to look and read like what it is.
  */
 export function ReconciliationPanel({ importId, plan }: { importId: string; plan: Plan }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
 
   const blocking = plan.guard_results.filter((g) => g.outcome === "blocked");
-  const overridable = blocking.length > 0 && blocking.every((g) => g.overridable);
+  const availability = overrideAvailability(plan.guard_results);
   const decided = plan.decision !== null;
 
-  async function decide(decision: "confirmed" | "skipped" | "cancelled", overrideGuardId?: string) {
+  const reasonOk = overrideReason.trim().length >= OVERRIDE_MIN_REASON_LENGTH;
+  const typedOk = typed.trim() === String(plan.retire_count);
+  const overrideReady = acknowledged && reasonOk && typedOk;
+
+  async function decide(decision: "confirmed" | "skipped" | "cancelled", override?: boolean) {
     setBusy(true);
     setError(null);
     try {
@@ -54,7 +71,15 @@ export function ReconciliationPanel({ importId, plan }: { importId: string; plan
         body: JSON.stringify({
           planId: plan.id,
           decision,
-          ...(overrideGuardId ? { overrideGuardId, typedConfirmation: typed } : {}),
+          ...(override
+            ? {
+                override: {
+                  acknowledged: true,
+                  typedConfirmation: typed.trim(),
+                  reason: overrideReason.trim(),
+                },
+              }
+            : {}),
         }),
       });
       const body = await response.json();
@@ -148,27 +173,94 @@ export function ReconciliationPanel({ importId, plan }: { importId: string; plan
             ) : null}
           </div>
 
-          {plan.verdict === "blocked" && overridable ? (
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="space-y-1">
-                <label htmlFor="typed" className="text-xs text-muted-foreground">
-                  Retire anyway — type {plan.retire_count} to confirm
+          {plan.verdict === "blocked" && !availability.available ? (
+            <Alert tone="info">
+              This plan cannot be overridden. Guard{" "}
+              {availability.nonOverridable.join(", ")} has no override, so the only ways
+              forward are importing without retiring, or cancelling.
+            </Alert>
+          ) : null}
+
+          {plan.verdict === "blocked" && availability.available ? (
+            <details className="rounded-md border border-destructive/50 bg-destructive/5">
+              <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-destructive">
+                Override the safety block and retire {plan.retire_count} record
+                {plan.retire_count === 1 ? "" : "s"}
+              </summary>
+
+              <div className="space-y-3 border-t border-destructive/30 px-3 py-3">
+                <div className="space-y-2 text-sm">
+                  <p>
+                    <strong>
+                      This import looks like a partial or incomplete snapshot of your history.
+                    </strong>{" "}
+                    Guard {availability.overridable.join(" and ")} stopped the retirement
+                    automatically, to protect data the file may simply be missing rather than
+                    data you meant to remove.
+                  </p>
+                  <p>
+                    Overriding retires {plan.retire_count} historical record
+                    {plan.retire_count === 1 ? "" : "s"} that exist in your account and are
+                    absent from this file. Retirement is reversible for the life of the import,
+                    but the records stop counting towards your history and your training
+                    analytics until it is reversed.
+                  </p>
+                  <p className="text-muted-foreground">
+                    This override is recorded against your account with the time, the reason you
+                    give below, and the guard result it overrode.
+                  </p>
+                </div>
+
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    id="override-acknowledge"
+                    type="checkbox"
+                    checked={acknowledged}
+                    onChange={(event) => setAcknowledged(event.target.checked)}
+                    className="mt-1"
+                  />
+                  <span>
+                    I understand this file may be incomplete, and I am choosing to retire{" "}
+                    {plan.retire_count} historical record
+                    {plan.retire_count === 1 ? "" : "s"} anyway.
+                  </span>
                 </label>
-                <Input
-                  id="typed"
-                  value={typed}
-                  onChange={(event) => setTyped(event.target.value)}
-                  className="w-40"
-                />
+
+                <div className="space-y-1">
+                  <label htmlFor="override-reason" className="text-xs text-muted-foreground">
+                    Why are you overriding? (required, at least {OVERRIDE_MIN_REASON_LENGTH}{" "}
+                    characters — this is stored in the audit trail)
+                  </label>
+                  <Textarea
+                    id="override-reason"
+                    value={overrideReason}
+                    onChange={(event) => setOverrideReason(event.target.value)}
+                    placeholder="For example: this export is authoritative, the older sessions were deleted deliberately."
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="typed" className="text-xs text-muted-foreground">
+                    Type {plan.retire_count} to confirm the number of records being retired
+                  </label>
+                  <Input
+                    id="typed"
+                    value={typed}
+                    onChange={(event) => setTyped(event.target.value)}
+                    className="w-40"
+                  />
+                </div>
+
+                <Button
+                  variant="destructive"
+                  disabled={busy || !overrideReady}
+                  onClick={() => void decide("confirmed", true)}
+                >
+                  Override {availability.overridable.join(" and ")} and retire{" "}
+                  {plan.retire_count}
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                disabled={busy || typed !== String(plan.retire_count)}
-                onClick={() => void decide("confirmed", blocking[0]?.id)}
-              >
-                Override {blocking[0]?.id} and retire
-              </Button>
-            </div>
+            </details>
           ) : null}
         </div>
       )}

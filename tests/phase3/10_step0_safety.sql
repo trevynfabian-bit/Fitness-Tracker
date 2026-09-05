@@ -252,24 +252,91 @@ select pg_temp.rejects(
   'G9 manual record retirement, even with a confirmed plan naming it', '42501');
 
 -- And an override row for G9 cannot even be recorded.
+--
+-- The attempt below is otherwise PERFECT: a plan G9 genuinely blocked, the
+-- right typed confirmation, the acknowledgement given, a substantive reason.
+-- Phase 5.1 made every one of those a real requirement, so satisfying them all
+-- is what leaves retirement_overrides_guard_overridable as the only thing
+-- standing — which is the point. G9 is refused by the shape of the audit
+-- table, not by a caller failing some other check first.
+insert into public.reconciliation_plans
+  (id, user_id, import_id, scope, add_count, update_count, unchanged_count,
+   retire_count, existing_in_scope_count, retire_ratio, retire_natural_keys,
+   guard_results, verdict)
+values ('00000000-0000-4000-8000-0000000000ca', :'ua', '00000000-0000-4000-8000-0000000000a1',
+        '{"source_key":"sample_source","templates":["strength"]}'::jsonb,
+        0, 0, 0, 1, 4, 0.2500, array['wk-a-manual'],
+        '[{"id":"G9","outcome":"blocked","detail":"1 retirement targets a manually entered record","overridable":false}]'::jsonb,
+        'blocked');
+
 select pg_temp.rejects(
-  $q$ insert into public.retirement_overrides (user_id, plan_id, guard_id, typed_confirmation)
+  $q$ insert into public.retirement_overrides
+        (user_id, plan_id, guard_id, typed_confirmation, acknowledged, reason)
       values ('77777777-7777-4777-8777-777777777777',
-              '00000000-0000-4000-8000-0000000000c9', 'G9', '1') $q$,
+              '00000000-0000-4000-8000-0000000000ca', 'G9', '1', true,
+              'the manual entry is wrong and should go') $q$,
   'G9 override row cannot be recorded at all', '23514');
 
+-- Consequently the plan stays unconfirmable: an override must cover every
+-- guard that blocked, and this one can never be covered.
 select pg_temp.rejects(
-  $q$ insert into public.retirement_overrides (user_id, plan_id, guard_id, typed_confirmation)
+  $q$ update public.reconciliation_plans
+        set decision = 'confirmed', decided_at = now()
+      where id = '00000000-0000-4000-8000-0000000000ca' $q$,
+  'a plan blocked by G9 cannot be confirmed', '42501');
+
+-- The same for G1, and again with an attempt that is otherwise complete: a
+-- plan G1 really blocked, the right count, acknowledged, with a reason.
+insert into public.reconciliation_plans
+  (id, user_id, import_id, scope, add_count, update_count, unchanged_count,
+   retire_count, existing_in_scope_count, retire_ratio, retire_natural_keys,
+   guard_results, verdict)
+values ('00000000-0000-4000-8000-0000000000cb', :'ua', '00000000-0000-4000-8000-0000000000a1',
+        '{"source_key":"sample_source","templates":["strength"]}'::jsonb,
+        0, 0, 0, 1, 4, 0.2500, array['wk-a-manual'],
+        '[{"id":"G1","outcome":"blocked","detail":"the import produced fatal errors","overridable":false}]'::jsonb,
+        'blocked');
+
+select pg_temp.rejects(
+  $q$ insert into public.retirement_overrides
+        (user_id, plan_id, guard_id, typed_confirmation, acknowledged, reason)
       values ('77777777-7777-4777-8777-777777777777',
-              '00000000-0000-4000-8000-0000000000c9', 'G1', '1') $q$,
+              '00000000-0000-4000-8000-0000000000cb', 'G1', '1', true,
+              'the parse errors are not important here') $q$,
   'G1 override row cannot be recorded (not an overridable guard)', '23514');
 
+-- The positive control: a WELL-FORMED override for an overridable guard is
+-- accepted. Since Phase 5.1 that means the guard really blocked this plan, the
+-- typed confirmation is the plan's own retire count, the acknowledgement was
+-- given, and a reason was supplied. Anything less is refused above.
+insert into public.reconciliation_plans
+  (id, user_id, import_id, scope, add_count, update_count, unchanged_count,
+   retire_count, existing_in_scope_count, retire_ratio, retire_natural_keys,
+   guard_results, verdict)
+values ('00000000-0000-4000-8000-0000000000cc', :'ua', '00000000-0000-4000-8000-0000000000a1',
+        '{"source_key":"sample_source","templates":["strength"]}'::jsonb,
+        0, 0, 2, 1, 4, 0.2500, array['wk-a-1'],
+        '[{"id":"G4","outcome":"blocked","detail":"coverage 50%, floor 70%","overridable":true}]'::jsonb,
+        'blocked');
+
 do $$
+declare recorded record;
 begin
-  insert into public.retirement_overrides (user_id, plan_id, guard_id, typed_confirmation)
+  insert into public.retirement_overrides
+    (user_id, plan_id, guard_id, typed_confirmation, acknowledged, reason)
   values ('77777777-7777-4777-8777-777777777777',
-          '00000000-0000-4000-8000-0000000000c9', 'G4', '1243');
-  raise notice 'PASS [G9/overrides] only G4 and G6 accept an override row; G4 accepted with a typed confirmation';
+          '00000000-0000-4000-8000-0000000000cc', 'G4', '1', true,
+          'this export is authoritative for the range it covers')
+  returning * into recorded;
+
+  -- The evidence is derived from the plan, not taken from the caller.
+  if recorded.guard_detail is distinct from 'coverage 50%, floor 70%'
+     or recorded.guard_outcome is distinct from 'blocked' then
+    raise exception 'FAIL [overrides] the guard evidence was not captured from the plan: % / %',
+      recorded.guard_outcome, recorded.guard_detail;
+  end if;
+
+  raise notice 'PASS [G9/overrides] only G4 and G6 accept an override row, and only a complete one; the guard evidence is captured from the plan';
 end
 $$;
 
@@ -326,16 +393,20 @@ values ('00000000-0000-4000-8000-0000000000c4', :'ua', '00000000-0000-4000-8000-
         '[{"local_date":"2026-01-06","label":"Workout"},{"local_date":"2026-01-07","label":"Workout"}]'::jsonb,
         '{"2026-01":2}'::jsonb,
         array['wk-a-2','wk-a-3'],
-        '[{"id":"G4","outcome":"BLOCKED","detail":"incoming 1 of 3 in scope is 33%, below the 70% floor"}]'::jsonb,
+        '[{"id":"G4","outcome":"blocked","detail":"incoming 1 of 3 in scope is 33%, below the 70% floor","overridable":true}]'::jsonb,
         'blocked');
 
--- Step 3 to 5: a blocked plan can never be confirmed, so retirement can never
--- be reached, and the append-only fallback is the only forward path.
+-- Step 3 to 5: a blocked plan cannot be confirmed by the ordinary path, so
+-- automatic retirement can never be reached. Since Phase 5.1 the refusal comes
+-- from a trigger rather than a CHECK constraint, because the rule is now
+-- relational — "unless every blocking guard has been explicitly overridden" —
+-- and a CHECK cannot see another table. The behaviour asserted here is
+-- unchanged: no override exists, so the confirmation is refused.
 select pg_temp.rejects(
   $q$ update public.reconciliation_plans
         set decision = 'confirmed', decided_at = now()
       where id = '00000000-0000-4000-8000-0000000000c4' $q$,
-  'SCENARIO B G4-blocked plan cannot be confirmed', '23514');
+  'SCENARIO B G4-blocked plan cannot be confirmed without an override', '42501');
 
 select pg_temp.rejects(
   $q$ update public.strength_workouts
@@ -358,7 +429,7 @@ begin
   if surviving <> 4 then
     raise exception 'FAIL [SCENARIO B] % of 4 workouts survived the truncated snapshot', surviving;
   end if;
-  raise notice 'PASS [SCENARIO B] truncated snapshot: G4 blocked, confirmation refused, append-only fallback taken, all 4 workouts intact';
+  raise notice 'PASS [SCENARIO B] truncated snapshot: G4 blocked, automatic confirmation refused, append-only fallback taken, all 4 workouts intact';
 end
 $$;
 

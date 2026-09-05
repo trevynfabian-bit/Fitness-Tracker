@@ -122,6 +122,13 @@ No AI. No insights. No Apple Health. No formula-versioned derived rows in `metri
 
 **Exit:** derived metric values equal canonical aggregation; retiring canonical data removes its contribution after recomputation; processing the same scope repeatedly does not change totals; users remain isolated; dashboard reads no longer scan the user's lifetime set history.
 
+### Phase 5.1 — Reconciliation G4 override resolution — COMPLETE
+*(A corrective phase, not a numbered step in v2 §12 or v3 §5. See `docs/roadmap.md` SC-4 and `docs/architecture-implementation-notes.md` N-8.)*
+
+G4 is a safety gate with an audited human override, which is what v3 §4.3 always described. A blocked plan still cannot be confirmed by any automatic path; it can be confirmed by its owner when every guard that blocked it carries an acknowledged, reasoned, attributable override. G9 remains absolute, the original verdict is never rewritten, and an override grants permission to proceed past a blocked verdict and nothing else.
+
+**Exit:** a blocked plan refuses ordinary confirmation, an owner can override it through a strongly confirmed and audited workflow, another user and an anonymous caller can do neither, repeating any of it changes nothing, and the derived analytics that follow equal canonical truth.
+
 ### Phase 6 — Manual body tracking
 *(This was Phase 4 in v2 §12. Unchanged in substance.)*
 

@@ -86,6 +86,20 @@ A `full_snapshot` import that proposes retirements stops at a confirmation
 screen instead of retiring anything. That is deliberate, and the database
 enforces it independently of the UI.
 
+If the guards **block** the plan — usually because the file looks like a
+partial export rather than a complete one — automatic retirement is refused and
+the one-click action is "Import without retiring". You can still proceed, but
+only deliberately: the override asks for an acknowledgement, a written reason,
+and the number of records being retired typed out, and it records all three
+against your account alongside the guard result it overrode. Every one of those
+requirements is enforced by the database, not just by the screen.
+
+Guard G9 — a retirement that would touch a manually entered record — has no
+override and never will.
+
+The audit trail is `v_retirement_audit`: one row per reconciliation plan, with
+the original verdict, the decision taken, and who overrode what, when and why.
+
 ### The product surface
 
 Once an import has completed, six signed-in routes read it:
@@ -230,6 +244,7 @@ npm run test:phase2      # import layer + canonical schema constraints (needs Po
 npm run test:step0       # provenance, reconciliation and alias safety (needs Postgres)
 npm run test:phase4      # the training read model, and hard gate D at 2,000 workouts
 npm run test:phase5      # the analytics layer: correctness, retirement, recovery, benchmark
+npm run test:phase5_1    # the G4 override: blocking, override, audit, isolation, idempotency
 npm run test:routes      # protected routes reject unauthenticated access (builds + serves)
 npm run test:e2e         # real signup/confirm/login/logout, the Hevy import, the product surface
 npm run test:all         # all of the above

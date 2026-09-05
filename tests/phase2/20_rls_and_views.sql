@@ -376,7 +376,10 @@ declare
     array['metric_daily','SELECT'],
     array['exercise_daily_source','SELECT'],
     array['exercise_daily','SELECT'],
-    array['rollup_queue','SELECT']
+    array['rollup_queue','SELECT'],
+    -- Phase 5.1. The retirement audit trail is readable by its owner and by
+    -- nobody else; it is a view over rows the client already reads.
+    array['v_retirement_audit','SELECT']
   ];
   row_i int;
   obj text;
@@ -424,7 +427,8 @@ begin
        'metrics','strength_workouts','strength_exercises','strength_sets',
        'v_metrics','v_strength_workouts','v_strength_exercises','v_strength_sets',
        'source_precedence','metric_daily_source','metric_daily',
-       'exercise_daily_source','exercise_daily','rollup_queue'
+       'exercise_daily_source','exercise_daily','rollup_queue',
+       'v_retirement_audit'
      );
   if missing is not null then
     raise exception 'FAIL [PRIV] objects exist that the privilege matrix does not cover: %', missing;
