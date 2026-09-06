@@ -8,6 +8,7 @@ export const PROTECTED_PREFIXES = [
   "/dashboard",
   "/history",
   "/exercises",
+  "/body",
   "/settings",
   "/registry",
   "/import",

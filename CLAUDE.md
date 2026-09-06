@@ -129,7 +129,7 @@ G4 is a safety gate with an audited human override, which is what v3 §4.3 alway
 
 **Exit:** a blocked plan refuses ordinary confirmation, an owner can override it through a strongly confirmed and audited workflow, another user and an anonymous caller can do neither, repeating any of it changes nothing, and the derived analytics that follow equal canonical truth.
 
-### Phase 6 — Manual body tracking
+### Phase 6 — Manual body tracking — COMPLETE
 *(This was Phase 4 in v2 §12. Unchanged in substance.)*
 
 Manual entry for weight, body fat, waist, and other measurements — routed through synthetic import → raw record → normalization → canonical metric. Corrections via superseding raw records with higher `precedence_rank`.

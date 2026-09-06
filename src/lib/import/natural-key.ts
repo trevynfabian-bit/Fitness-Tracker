@@ -107,6 +107,32 @@ export function setNaturalKey(args: {
   });
 }
 
+/**
+ * Scalar metric identity.
+ *
+ * The metric key is the entity, a laterality or site is the qualifier, and the
+ * instant truncated to the recording granularity is the identity. The value
+ * never participates, so a correction to a reading is an update to the same
+ * record rather than a phantom second reading.
+ */
+export function metricNaturalKey(args: {
+  userId: string;
+  sourceKey: string;
+  metricKey: string;
+  qualifier: string | null;
+  timestampUtc: string;
+  granularity: "second" | "minute" | "day";
+}): string {
+  return naturalKey({
+    userId: args.userId,
+    sourceKey: args.sourceKey,
+    template: "metrics",
+    entityKey: args.metricKey,
+    qualifier: args.qualifier ?? "",
+    identity: truncateForKey(args.timestampUtc, args.granularity),
+  });
+}
+
 /** sha256 of a canonicalised payload, the intra-file duplicate guard. */
 export function rowHash(payload: Record<string, unknown>): string {
   const canonical = JSON.stringify(payload, Object.keys(payload).sort());

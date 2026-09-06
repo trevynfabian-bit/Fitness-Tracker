@@ -85,14 +85,16 @@ export async function downloadImportFile(db: Db, storagePath: string): Promise<s
  * the normalizer itself performs no database reads (I-3).
  */
 export async function loadRegistrySnapshot(db: Db, userId: string): Promise<RegistrySnapshot> {
-  const [definitions, aliases, units, conversions] = await Promise.all([
+  const [definitions, aliases, units, conversions, metricDefs, metricAliases] = await Promise.all([
     db.from("exercise_definitions").select("id, key, user_id").or(`user_id.is.null,user_id.eq.${userId}`),
     db.from("exercise_aliases").select("alias_normalized, exercise_definition_id, user_id").or(`user_id.is.null,user_id.eq.${userId}`),
     db.from("units").select("id, key, dimension, user_id").or(`user_id.is.null,user_id.eq.${userId}`),
     db.from("unit_conversions").select("from_unit_id, to_unit_id, factor, offset, user_id").or(`user_id.is.null,user_id.eq.${userId}`),
+    db.from("metric_definitions").select("id, key, canonical_unit_id, user_id").or(`user_id.is.null,user_id.eq.${userId}`),
+    db.from("metric_aliases").select("alias_normalized, metric_definition_id, user_id").or(`user_id.is.null,user_id.eq.${userId}`),
   ]);
 
-  for (const result of [definitions, aliases, units, conversions]) {
+  for (const result of [definitions, aliases, units, conversions, metricDefs, metricAliases]) {
     if (result.error) throw new Error(`registry snapshot: ${result.error.message}`);
   }
 
@@ -123,8 +125,22 @@ export async function loadRegistrySnapshot(db: Db, userId: string): Promise<Regi
     exerciseAliases: new Map(
       (aliases.data ?? []).map((a) => [a.alias_normalized as string, a.exercise_definition_id as string]),
     ),
-    metricAliases: new Map(),
-    metricDefinitions: new Map(),
+    metricAliases: new Map(
+      (metricAliases.data ?? []).map((a) => [
+        a.alias_normalized as string,
+        a.metric_definition_id as string,
+      ]),
+    ),
+    metricDefinitions: new Map(
+      (metricDefs.data ?? []).map((d) => [
+        d.id as string,
+        {
+          id: d.id as string,
+          key: d.key as string,
+          canonicalUnitId: d.canonical_unit_id as string,
+        },
+      ]),
+    ),
     units: unitByKey,
     unitConversions,
   };
@@ -233,7 +249,7 @@ async function runNormalize(db: Db, job: JobRow): Promise<BatchOutcome> {
   const lastRawId = Number(job.cursor.last_raw_id ?? 0);
   const { data: rawRecords, error } = await db
     .from("raw_records")
-    .select("id, user_id, source_key, payload")
+    .select("id, user_id, source_key, payload, precedence_rank, supersedes_natural_key")
     .eq("import_id", job.import_id)
     .eq("normalize_status", "pending")
     .gt("id", lastRawId)
@@ -256,11 +272,42 @@ async function runNormalize(db: Db, job: JobRow): Promise<BatchOutcome> {
           userId: raw.user_id as string,
           sourceKey: raw.source_key as string,
           payload: raw.payload as Record<string, unknown>,
+          precedenceRank: Number(raw.precedence_rank ?? 0),
+          supersedesNaturalKey: (raw.supersedes_natural_key as string | null) ?? null,
         },
         spec,
         registry,
         NORMALIZE_VERSION,
       );
+
+      // The metrics template. One raw record is one scalar observation, and
+      // the upsert decides whether it may replace what is already there
+      // (v2 section 4.3 precedence).
+      for (const metric of result.metrics) {
+        const { data: outcome, error: metricError } = await db.rpc("import_upsert_metric", {
+          p_user_id: raw.user_id,
+          p_natural_key: metric.naturalKey,
+          p_metric_definition_id: metric.metricDefinitionId,
+          p_metric_key: metric.metricKey,
+          p_qualifier: metric.qualifier,
+          p_timestamp_utc: metric.timestampUtc,
+          p_tz_offset_minutes: metric.tzOffsetMinutes,
+          p_tz_name: metric.tzName,
+          p_local_date: metric.localDate,
+          p_value_num: metric.valueNum,
+          p_unit_id: metric.unitId,
+          p_unit: metric.unit,
+          p_source_key: record.source_key,
+          p_source_value_num: metric.sourceValueNum,
+          p_source_unit: metric.sourceUnit,
+          p_raw_record_id: raw.id,
+          p_import_id: job.import_id,
+        });
+        if (metricError) throw new Error(metricError.message);
+        if (outcome === "added") added += 1;
+        else if (outcome === "updated") updated += 1;
+        else unchanged += 1;
+      }
 
       for (const workout of result.workouts) {
         const { data: wk, error: wkError } = await db.rpc("import_upsert_strength_workout", {
@@ -593,6 +640,39 @@ export async function runJobBatch(db: Db, job: JobRow): Promise<BatchOutcome> {
     if (exhausted) await setImport(db, job.import_id, { status: "failed" });
     return { jobId: job.id, stage: job.stage, state: "failed", processed: 0, cursor: {}, message };
   }
+}
+
+/**
+ * Drains the jobs of ONE import to quiescence.
+ *
+ * Used where the caller is waiting on that import specifically — a manual
+ * entry, which is a single row and has no reason to wait for a cron tick. It
+ * is deliberately scoped to one import: a request must never end up doing
+ * another user's queued work.
+ */
+export async function drainImportJobs(
+  db: Db,
+  importId: string,
+  maxBatches = 50,
+): Promise<BatchOutcome[]> {
+  const outcomes: BatchOutcome[] = [];
+  for (let i = 0; i < maxBatches; i += 1) {
+    const { data, error } = await db
+      .from("import_jobs")
+      .select("id, user_id, import_id, stage, state, cursor, attempts")
+      .eq("import_id", importId)
+      .in("state", ["queued", "running"])
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (error) throw new Error(`drain import ${importId}: ${error.message}`);
+    const job = (data ?? [])[0] as JobRow | undefined;
+    if (!job) break;
+
+    const outcome = await runJobBatch(db, job);
+    outcomes.push(outcome);
+    if (outcome.state === "failed") break;
+  }
+  return outcomes;
 }
 
 /** Drains queued work. One batch per job per invocation, as a cron tick would. */

@@ -107,9 +107,11 @@ do update set
 -- metric_definitions
 -- ---------------------------------------------------------------------------
 
+-- manual_entry marks the metrics a person can meaningfully measure and type.
+-- All nine of these are; the derived training aggregates seeded in 0003 are not.
 insert into public.metric_definitions
-  (user_id, key, display_name, description, canonical_unit_id, default_aggregation)
-select null, v.key, v.display_name, v.description, u.id, v.default_aggregation
+  (user_id, key, display_name, description, canonical_unit_id, default_aggregation, manual_entry)
+select null, v.key, v.display_name, v.description, u.id, v.default_aggregation, true
 from (
   values
     ('weight',                 'Weight',                 'Total body mass.',                                              'kg',      'mean'),
@@ -129,6 +131,7 @@ do update set
   description         = excluded.description,
   canonical_unit_id   = excluded.canonical_unit_id,
   default_aggregation = excluded.default_aggregation,
+  manual_entry        = excluded.manual_entry,
   is_active           = true,
   updated_at          = now();
 

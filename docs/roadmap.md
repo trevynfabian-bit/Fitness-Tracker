@@ -41,8 +41,8 @@ stand.
 | **4** | Training product surface | **Complete** | The Phase 4 read model (`training_*` functions) and the six signed-in screens: dashboard, workout history, workout detail, exercise explorer, exercise progression, settings |
 | **5** | Analytics foundation and incremental derived metrics | **Complete** | `source_precedence`, `metric_daily_source` → `metric_daily`, `exercise_daily_source` → `exercise_daily`, `rollup_queue`, invalidation and recomputation, rollup worker, read model migrated onto derived metrics |
 | **5.1** | Reconciliation G4 override resolution | **Complete** | G4 becomes a safety gate with an audited human override: a blocked plan is confirmable only when every guard that blocked it carries an acknowledged, attributable, reasoned override. See `docs/architecture-implementation-notes.md` N-8 |
-| **6** | Manual body tracking | Not started | Manual entry and correction through synthetic imports; the work v2 §12 placed at Phase 4 |
-| **7** | Body and recovery charts | Not started | Weight, body fat, waist, HRV, RHR, sleep rendered from `metric_daily`; ranges, gap policy, minimum-observation gates. The infrastructure Phase 5 builds; the metrics Phase 6 produces |
+| **6** | Manual body tracking | **Complete** | Manual entry and correction through synthetic imports: the `metrics` template normalizer, precedence-aware upsert, the rebuild, and the `/body` surface. The work v2 §12 placed at Phase 4 |
+| **7** | Body and recovery charts | Not started | Weight, body fat, waist, HRV, RHR, sleep rendered from `metric_daily`; ranges, gap policy, minimum-observation gates. The infrastructure Phase 5 builds; the metrics Phase 6 produces. **Includes wiring a `metrics` rollup domain**: Phase 6 lands scalars in `metrics`, and nothing aggregates them into `metric_daily` yet |
 
 Phases 8 and beyond follow v3 §5 unchanged: further import profiles,
 formula-versioned derived metrics, timeline, deterministic analytics, insights,

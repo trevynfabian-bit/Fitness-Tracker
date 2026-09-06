@@ -117,6 +117,13 @@ export const mappingSpecSchema = z.object({
   unit_column: z.string().optional(),
   metric_value_map: z.record(z.string(), z.string()).optional(),
   unit_value_map: z.record(z.string(), z.string()).optional(),
+  /**
+   * metrics template: the granularity identity is recorded at (v2 §7.1).
+   * A daily scale reading truncated to the second would become a new record
+   * every time the device reported a slightly different sync time; a
+   * minute-truncated one lets a person weigh twice in a day and keep both.
+   */
+  identity_granularity: z.enum(["second", "minute", "day"]).default("minute"),
   /** strength template */
   strength: strengthMappingSchema.optional(),
   row_filters: z.array(rowFilterSchema).default([]),
@@ -234,10 +241,36 @@ export type NormalizedSet = {
   setNumberDerived: boolean;
 };
 
+/**
+ * One canonical scalar observation.
+ *
+ * source_value_num and source_unit keep what the source actually said, so a
+ * value converted into the canonical unit can always be shown back in the unit
+ * it was recorded in (v2 §4.2 step 5).
+ */
+export type NormalizedMetric = {
+  naturalKey: string;
+  metricDefinitionId: string;
+  metricKey: string;
+  qualifier: string | null;
+  timestampUtc: string;
+  tzOffsetMinutes: number;
+  tzName: string | null;
+  localDate: string;
+  valueNum: string;
+  unitId: string;
+  unit: string;
+  sourceValueNum: string;
+  sourceUnit: string;
+  /** True when this row supersedes an earlier one rather than creating one. */
+  supersedes: boolean;
+};
+
 export type NormalizeResult = {
   workouts: NormalizedWorkout[];
   exercises: NormalizedExercise[];
   sets: NormalizedSet[];
+  metrics: NormalizedMetric[];
   naturalKeys: string[];
   warnings: string[];
   errors: string[];

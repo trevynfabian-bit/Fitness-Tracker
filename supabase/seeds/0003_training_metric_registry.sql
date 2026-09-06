@@ -35,9 +35,12 @@
 
 begin;
 
+-- manual_entry is false for every one of these: they are aggregations the
+-- rollup computes from canonical training data. A typed value would be a
+-- second, unreconcilable source of truth for a figure that already has one.
 insert into public.metric_definitions
-  (user_id, key, display_name, description, canonical_unit_id, default_aggregation, gap_policy)
-select null, v.key, v.display_name, v.description, u.id, v.default_aggregation, v.gap_policy
+  (user_id, key, display_name, description, canonical_unit_id, default_aggregation, gap_policy, manual_entry)
+select null, v.key, v.display_name, v.description, u.id, v.default_aggregation, v.gap_policy, false
 from (
   values
     ('training_workouts',       'Training Workouts',
@@ -70,6 +73,7 @@ do update set
   canonical_unit_id   = excluded.canonical_unit_id,
   default_aggregation = excluded.default_aggregation,
   gap_policy          = excluded.gap_policy,
+  manual_entry        = excluded.manual_entry,
   is_active           = true,
   updated_at          = now();
 

@@ -5,11 +5,12 @@ The product is the historical data foundation, not the dashboard.
 
 `CLAUDE.md` is the operating specification. Read it before changing anything.
 
-**Current state: Phases 1–5 complete.** Foundation and auth, the canonical
+**Current state: Phases 1–6 complete.** Foundation and auth, the canonical
 schema, the Universal Import Engine with the Hevy slice, the product surface
-that reads it, and the analytics layer underneath it. Nothing in this
-repository fabricates measurements: an account with no imports shows an empty
-state, never a zero-filled chart.
+that reads it, the analytics layer underneath it, and manual entry of body
+measurements. Nothing in this repository fabricates measurements: an account
+with no imports shows an empty state, never a zero-filled chart, and a typed
+measurement goes through the same pipeline an exported file does.
 
 `docs/roadmap.md` is the authoritative statement of what is built and what
 comes next.
@@ -102,7 +103,7 @@ the original verdict, the decision taken, and who overrode what, when and why.
 
 ### The product surface
 
-Once an import has completed, six signed-in routes read it:
+Once an import has completed, seven signed-in routes read it:
 
 | Route | What it is |
 |---|---|
@@ -111,6 +112,7 @@ Once an import has completed, six signed-in routes read it:
 | `/history/[id]` | One session: its exercises, and only the set columns those exercises actually recorded |
 | `/exercises` | Every exercise performed, with what its data supports being compared on |
 | `/exercises/[id]` | One exercise: its progression on the axis its own sets carry, and every session |
+| `/body` | Measurements recorded by hand, and corrections to them |
 | `/settings` | Account and the metric registry |
 
 All six read through `public.training_*` functions. They are `SECURITY
@@ -133,6 +135,35 @@ them:
   loaded set reports `NULL`, drawn as a gap.
 - **Frequency** counts workouts per ISO week over `local_date`. A week without
   training is a real zero, and is drawn as one.
+
+### Recording a measurement by hand
+
+`/body` records weight, body fat, waist and the other measurable metrics. A
+typed measurement is **not** written straight into the canonical table: it
+becomes a synthetic import and a raw record, and the same normalizer that turns
+a Hevy CSV row into a set turns that raw record into a metric. There is no
+second write path.
+
+A correction is not an edit. It is another raw record, at a higher precedence
+rank, naming the observation it supersedes. The original stays exactly where it
+was. Because the upsert prefers the higher-precedence origin, replaying the raw
+layer in any order lands on the corrected value — which is what makes this
+true:
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/worker/rebuild \
+  -H "x-worker-secret: $IMPORT_WORKER_SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"userId":"<uuid>","template":"metrics"}'
+```
+
+That replays every raw record through normalization. The canonical rows come
+back identical, corrections included. It is the architecture's central claim,
+made runnable.
+
+Only metrics the registry marks `manual_entry` can be typed. Derived
+aggregates — training volume and the rest — cannot be, because they already
+have a source of truth.
 
 ### The analytics layer
 
@@ -245,6 +276,7 @@ npm run test:step0       # provenance, reconciliation and alias safety (needs Po
 npm run test:phase4      # the training read model, and hard gate D at 2,000 workouts
 npm run test:phase5      # the analytics layer: correctness, retirement, recovery, benchmark
 npm run test:phase5_1    # the G4 override: blocking, override, audit, isolation, idempotency
+npm run test:phase6      # manual entry, correction by supersession, and the rebuild
 npm run test:routes      # protected routes reject unauthenticated access (builds + serves)
 npm run test:e2e         # real signup/confirm/login/logout, the Hevy import, the product surface
 npm run test:all         # all of the above
