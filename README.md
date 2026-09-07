@@ -277,6 +277,7 @@ npm run test:phase4      # the training read model, and hard gate D at 2,000 wor
 npm run test:phase5      # the analytics layer: correctness, retirement, recovery, benchmark
 npm run test:phase5_1    # the G4 override: blocking, override, audit, isolation, idempotency
 npm run test:phase6      # manual entry, correction by supersession, and the rebuild
+npm run test:phase7      # the metrics rollup domain and the chart read model
 npm run test:routes      # protected routes reject unauthenticated access (builds + serves)
 npm run test:e2e         # real signup/confirm/login/logout, the Hevy import, the product surface
 npm run test:all         # all of the above

@@ -63,9 +63,36 @@ export const timezoneSpecSchema = z.discriminatedUnion("mode", [
 ]);
 export type TimezoneSpec = z.infer<typeof timezoneSpecSchema>;
 
+/**
+ * A declared timestamp format governs resolution: a value that does not match
+ * it is refused rather than inferred (see
+ * docs/architecture-implementation-notes.md N-15). A format the parser cannot
+ * read would therefore refuse every row of an import, so it is caught at the
+ * profile door instead of on row 1.
+ *
+ * The vocabulary is closed — yyyy, MMM, MM, dd, d, HH, mm, ss — and a format
+ * that resolves to an instant has to name a year, a month and a day. Case
+ * separates month (MM) from minute (mm).
+ */
+const FORMAT_NAMES_YEAR = /yyyy/;
+const FORMAT_NAMES_MONTH = /MMM|MM/;
+const FORMAT_NAMES_DAY = /dd|d/;
+
 export const timestampSpecSchema = z.object({
   columns: z.array(z.string()).min(1),
-  format: z.string().optional(),
+  format: z
+    .string()
+    .refine(
+      (value) =>
+        FORMAT_NAMES_YEAR.test(value) &&
+        FORMAT_NAMES_MONTH.test(value) &&
+        FORMAT_NAMES_DAY.test(value),
+      {
+        message:
+          "timestamp.format must name a year (yyyy), a month (MM or MMM) and a day (d or dd)",
+      },
+    )
+    .optional(),
   timezone: timezoneSpecSchema,
 });
 export type TimestampSpec = z.infer<typeof timestampSpecSchema>;

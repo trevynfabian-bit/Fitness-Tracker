@@ -341,7 +341,7 @@ export function normalize(
     .map((column) => (row[column] ?? "").trim())
     .filter((v) => v !== "")
     .join(" ");
-  const stamp = resolveTimestamp(timestampRaw, spec.timestamp.timezone, row);
+  const stamp = resolveTimestamp(timestampRaw, spec.timestamp.timezone, row, spec.timestamp.format);
 
   // 3. Resolve identity.
   const externalIdValue = resolveBinding(spec.external_id, row, spec, context, "external_id");
@@ -528,7 +528,7 @@ function normalizeMetrics(
     .map((column) => (row[column] ?? "").trim())
     .filter((value) => value !== "")
     .join(" ");
-  const stamp = resolveTimestamp(timestampRaw, spec.timestamp.timezone, row);
+  const stamp = resolveTimestamp(timestampRaw, spec.timestamp.timezone, row, spec.timestamp.format);
 
   // The metric identifier, mapped through the profile's own vocabulary first so
   // a source that says "Gewicht" resolves without the registry needing to.

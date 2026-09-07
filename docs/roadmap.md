@@ -38,6 +38,7 @@ stand.
 | **1** | Foundation, authentication, security | **Complete** | Next.js + TypeScript + Tailwind, env validation, Supabase auth (sign up, confirm, log in, log out, protected routes), the nine registry tables, RLS on every user-owned table, the system registry seed |
 | **2** | Canonical data architecture | **Complete** | `import_profiles`, `data_imports`, `import_jobs`, `raw_records`, `import_coverage`; canonical `metrics`, `strength_workouts`, `strength_exercises`, `strength_sets`; append-only trigger, natural keys, revision strategy, canonical views, privilege lockdown |
 | **3** | Import, normalization, provenance, reconciliation | **Complete** | Universal Import Engine: profiling, detection, declarative mapping, closed transform library, preview, confirmation, checkpointed worker; Hevy as a profile JSON plus fixture; reconciliation plans, guards G1–G10, database-enforced retirement |
+| **3.1** | Hevy profile against a real export | **Complete** | `mapping_spec.timestamp.format` made live in the engine and made authoritative when declared, a calendar-validating format parser, the Hevy profile's declared shape corrected to the one Hevy emits, and the fixtures replaced by an anonymized slice of a real export. See `docs/architecture-implementation-notes.md` N-15 |
 | **4** | Training product surface | **Complete** | The Phase 4 read model (`training_*` functions) and the six signed-in screens: dashboard, workout history, workout detail, exercise explorer, exercise progression, settings |
 | **5** | Analytics foundation and incremental derived metrics | **Complete** | `source_precedence`, `metric_daily_source` → `metric_daily`, `exercise_daily_source` → `exercise_daily`, `rollup_queue`, invalidation and recomputation, rollup worker, read model migrated onto derived metrics |
 | **5.1** | Reconciliation G4 override resolution | **Complete** | G4 becomes a safety gate with an audited human override: a blocked plan is confirmable only when every guard that blocked it carries an acknowledged, attributable, reasoned override. See `docs/architecture-implementation-notes.md` N-8 |
@@ -101,6 +102,29 @@ forward-only.
 *What did not change:* the queue scope stays `(user_id, domain, local_date)`
 per ADR-19. No formula-versioned derived rows were written into `metrics`;
 that is still v3 Phase 7 and still out of scope.
+
+**SC-6. Phase 3.1 verified the Hevy profile against a real export.**
+*Authority:* explicit user direction, choosing a scoped corrective phase over a
+minimal patch or a deferral, and choosing an anonymized slice over a full
+export or no committed file.
+*What this fixes:* the shipped Hevy profile could not import a real Hevy
+export. `mapping_spec.timestamp.format` was declared by the profile, validated
+by the schema and read by nothing, so the profile's claim about the file was
+never checked; the committed fixture was a reconstruction whose timestamps did
+not match the ones Hevy emits; and every gate from Phase 3 through Phase 5.1
+passed against that reconstruction. See
+`docs/architecture-implementation-notes.md` N-15.
+*What this is not:* it is not a re-run of Phase 3 and it adds no vendor, no
+column and no transform. The engine change is one function and one argument;
+the profile change is one string.
+*What did not change:* the canonical model, the natural keys, the transform
+library, the guards, and every invariant in `CLAUDE.md` §3. The four existing
+fixtures were converted losslessly — every timestamp in them ended in `:00`, so
+the instants and therefore the natural keys are byte-identical to what Phase 3,
+4, 5 and 5.1 were verified against.
+*What it left standing:* the Hevy profile still does not map workout duration.
+Recorded as `docs/architecture-implementation-notes.md` N-16 rather than fixed
+inside a corrective phase.
 
 **SC-3. `CLAUDE.md` §6 narrowed on two lines.**
 "Derived metrics" as an out-of-scope item meant v3 Phase 7's formula-versioned

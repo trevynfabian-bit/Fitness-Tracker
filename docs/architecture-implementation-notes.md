@@ -418,3 +418,71 @@ Phase 7's job.
 
 **The rule meanwhile.** Do not depend on `router.refresh()` to show a user
 their own write.
+
+---
+
+## N-15. `mapping_spec.timestamp.format` was declared but never read
+
+*Phase 3.1. A real product defect: the shipped Hevy profile could not import a
+real Hevy export.*
+
+The mapping spec has always carried an optional `timestamp.format`. The schema
+validated it, the Hevy profile declared `yyyy-MM-dd HH:mm:ss`, and no code path
+ever looked at it. `resolveTimestamp` went straight to a set of built-in shapes
+and, failing those, to `Date.parse`.
+
+That is a silent contract: a profile could describe one shape and the engine
+would accept a different one, so the declared format proved nothing. The Hevy
+profile shipped that way. Its fixture was a faithful reconstruction of the
+column contract but not of the timestamp shape — the reconstruction wrote
+`2026-01-05 18:03:00`, and Hevy emits `5 Jan 2026, 18:03`. Every gate in
+Phase 3, Phase 4, Phase 5 and Phase 5.1 passed against the reconstruction, and a
+real export failed on its first row with `cannot parse timestamp`.
+
+**What changed.** `parseByFormat(text, format)` compiles a declared format into
+an anchored pattern over a closed token set (`yyyy`, `MMM`, `MM`, `dd`, `d`,
+`HH`, `mm`, `ss`) and validates the parts against a real calendar, so
+`29 Feb 2025` is refused rather than rolled into 1 March. `resolveTimestamp`
+takes the format as a fourth argument and, **when one is declared, that format
+governs**: a value that does not match it throws, with no fallback to the
+built-in shapes. A profile that declares a shape and receives another now fails
+loudly at the row, which is the behaviour the field always implied.
+
+Profiles that declare no format keep the previous inference path unchanged.
+
+**Why the format governs rather than merely being tried first.** A fallback
+would have made this defect invisible again: the Hevy profile's wrong format
+would have been skipped and the correct shape inferred, and the profile would
+still be claiming something untrue about the file it reads. Ingestion is the
+one place where guessing is a data-integrity problem (I-6 is the same instinct
+applied to identifiers).
+
+**The signal to revisit.** A vendor that emits more than one timestamp shape in
+one file. Today no profile does, and the answer would be a per-column format,
+not a fallback chain.
+
+---
+
+## N-16. The Hevy profile does not map workout duration
+
+*Phase 3.1. Found while verifying the profile against a real export. Recorded,
+not fixed.*
+
+Hevy writes `start_time` and `end_time` on every row. The profile maps
+`start_time` to the workout timestamp and, for `strength.workout`, maps only
+`title`. Nothing maps `end_time`, so `strength_workouts.duration_s` is null for
+every imported Hevy workout, and the product's workout screens show no
+duration for real training data.
+
+This is a mapping gap, not an engine gap: `duration_s` exists in the canonical
+model, the normalizer writes it when the spec supplies it, and the transform
+library already has what a `start_time`/`end_time` difference needs. It is
+recorded here rather than fixed because Phase 3.1's scope is the timestamp
+contract that made the profile unusable, and widening a corrective phase into
+mapping improvements is how corrective phases stop being verifiable.
+
+`tests/import/real-hevy-export.test.ts` asserts the null explicitly, so the day
+the mapping is added the assertion fails and this note is what explains why.
+
+**The signal to revisit.** The first phase that touches the Hevy profile for any
+other reason, or the first product surface that needs session duration.

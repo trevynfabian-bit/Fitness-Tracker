@@ -46,7 +46,7 @@
       "columns": [
         "start_time"
       ],
-      "format": "yyyy-MM-dd HH:mm:ss",
+      "format": "d MMM yyyy, HH:mm",
       "timezone": {
         "mode": "fixed",
         "tz_name": "UTC"

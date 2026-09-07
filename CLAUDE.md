@@ -102,6 +102,13 @@ End-to-end Universal Import Engine: upload, profiling, template selection, colum
 
 **If Test B fails, STOP.** Do not work around it, do not soften the guard, do not proceed to Phase 4. Fix the reconciliation implementation.
 
+### Phase 3.1 — Hevy profile against a real export — COMPLETE
+*(A corrective phase, not a numbered step in v2 §12 or v3 §5. See `docs/roadmap.md` SC-6 and `docs/architecture-implementation-notes.md` N-15.)*
+
+Phase 3 was verified against a faithful reconstruction of the Hevy column contract, and the reconstruction differed from reality in the one field that broke the importer: `mapping_spec.timestamp.format` was declared by the profile, validated by the schema, and read by no code. Phase 3.1 makes the declared format live and authoritative — when a profile declares a format, that format governs and a value that contradicts it fails loudly, with no fallback to inference — corrects the Hevy profile to the shape Hevy emits, and commits an anonymized slice of a real export as the acceptance fixture §5 always required.
+
+**Exit:** a real Hevy export imports end to end, and Test A and Test B both still pass against the converted fixtures.
+
 ### Phase 4 — Training product surface — COMPLETE
 *(This slot held "manual body tracking" in v2 §12. That work is now Phase 6. See `docs/roadmap.md` SC-1.)*
 
@@ -111,7 +118,7 @@ Phase 4 writes nothing. No canonical row originates outside the import pipeline.
 
 **Exit:** canonical imported data → secure query layer → dashboard/history/exercise UI, verified end to end, with an empty account showing an empty state rather than a zero-filled chart, and cross-user isolation proven at the database, the read model and the page.
 
-### Phase 5 — Analytics foundation and incremental derived metrics
+### Phase 5 — Analytics foundation and incremental derived metrics — COMPLETE
 *(v3 §5's Phase 5, applied to the metrics the product actually has. See `docs/roadmap.md` SC-2.)*
 
 `source_precedence`, `metric_daily_source` → `metric_daily`, the exercise-grain pair, `rollup_queue`, invalidation and recomputation, the rollup worker, and the selective migration of the Phase 4 read model onto derived metrics.
