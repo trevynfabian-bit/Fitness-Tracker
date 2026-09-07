@@ -42,7 +42,8 @@ stand.
 | **5** | Analytics foundation and incremental derived metrics | **Complete** | `source_precedence`, `metric_daily_source` → `metric_daily`, `exercise_daily_source` → `exercise_daily`, `rollup_queue`, invalidation and recomputation, rollup worker, read model migrated onto derived metrics |
 | **5.1** | Reconciliation G4 override resolution | **Complete** | G4 becomes a safety gate with an audited human override: a blocked plan is confirmable only when every guard that blocked it carries an acknowledged, attributable, reasoned override. See `docs/architecture-implementation-notes.md` N-8 |
 | **6** | Manual body tracking | **Complete** | Manual entry and correction through synthetic imports: the `metrics` template normalizer, precedence-aware upsert, the rebuild, and the `/body` surface. The work v2 §12 placed at Phase 4 |
-| **7** | Body and recovery charts | Not started | Weight, body fat, waist, HRV, RHR, sleep rendered from `metric_daily`; ranges, gap policy, minimum-observation gates. The infrastructure Phase 5 builds; the metrics Phase 6 produces. **Includes wiring a `metrics` rollup domain**: Phase 6 lands scalars in `metrics`, and nothing aggregates them into `metric_daily` yet |
+| **7** | Body and recovery charts | **Complete** | The `metrics` rollup domain — `rollup_recompute_metrics_day`, domain dispatch in the worker, invalidation from both producers, and `metric_definitions.rollup_domain` partitioning `metric_daily` between the two domains — plus the chart read model (`body_metric_series`, `body_metric_summary`, `body_metric_bounds`) and the charts on `/body` |
+| **8** | More import profiles | Not started | v3 §5 Phase 8 onward, unchanged |
 
 Phases 8 and beyond follow v3 §5 unchanged: further import profiles,
 formula-versioned derived metrics, timeline, deterministic analytics, insights,
@@ -82,6 +83,24 @@ so the product offered an action it could not complete. Phase 5.1 makes the
 capability real and enforces its requirements in the database.
 *What did not change:* G9 remains absolute, the verdict is never rewritten, and
 an override buys permission to proceed past a blocked verdict and nothing else.
+
+**SC-5. Phase 7 wired the metrics rollup domain before drawing anything.**
+*Authority:* explicit user direction at the start of Phase 7, and this file's
+own Phase 7 row, which recorded the missing plumbing when Phase 5 landed.
+*What this is:* Phase 5 built the two-tier rollup for the training domain only.
+Phase 6 then wrote body scalars into canonical `metrics`, where they stopped:
+nothing aggregated them into `metric_daily`. Phase 7's first half is that
+aggregation, reusing the Phase 5 infrastructure rather than paralleling it —
+the same queue, the same two tiers, the same precedence resolution, the same
+worker.
+*What this fixed on the way:* the Phase 5 training recompute deleted every
+`metric_daily` row for a day regardless of domain, which a second writer turns
+into silent mutual data loss. See `docs/architecture-implementation-notes.md`
+N-9. The Phase 5 migration was not edited; the function was replaced
+forward-only.
+*What did not change:* the queue scope stays `(user_id, domain, local_date)`
+per ADR-19. No formula-versioned derived rows were written into `metrics`;
+that is still v3 Phase 7 and still out of scope.
 
 **SC-3. `CLAUDE.md` §6 narrowed on two lines.**
 "Derived metrics" as an out-of-scope item meant v3 Phase 7's formula-versioned

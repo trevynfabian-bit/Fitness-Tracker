@@ -239,3 +239,182 @@ path executes the same lifecycle, and the same analytics invalidation follows.
 **The signal to revisit.** A guard becoming overridable that is not a coverage
 or volume heuristic. The overridable set is a deliberate list, and widening it
 is a decision about what the guards are for, not a configuration change.
+
+---
+
+## N-9. `metric_daily` is written by two domains, partitioned by the registry
+
+*Phase 7. Not a deviation from v2 §9; a consequence of it that Phase 5 could
+defer while training was the only domain.*
+
+**The problem.** Phase 5's `rollup_recompute_training_day` deleted its scope
+with `where user_id = $1 and local_date = $2` and no `metric_key` filter. That
+was correct while `metric_daily` held training aggregates and nothing else.
+Phase 7 adds a second writer, and two whole-day deletes over one table means
+each domain silently erases the other's rows for every day a person both
+trained and measured themselves — repaired by the next rebuild of the surviving
+domain, and re-broken by the next run of the other. Invisible either way.
+
+**The resolution.** v2 §9.2's own tier-1 statement is scoped per metric
+(`WHERE user_id = $1 AND metric_key = $2 AND local_date = $3`). Phase 5 widened
+it because one domain made that safe; Phase 7 narrows it back. Both recompute
+functions now delete and rebuild exactly the keys their own domain owns.
+
+**Where the partition lives.** `metric_definitions.rollup_domain`, `NOT NULL`
+with a two-value check, so the domains are exhaustive and disjoint by
+construction and no metric key can be unowned. It is a registry column and not
+a key list in SQL for the reason I-6 exists: a list of metric keys written into
+engine code is a free-text identifier, and it would be wrong the moment a
+metric is seeded.
+
+**What did not change.** The queue scope is still `(user_id, domain,
+local_date)`, per ADR-19. One scan of `v_metrics` for a user-day produces every
+metric's tier-1 rows, exactly as one scan of the `v_strength_*` views produces
+every training metric's, so a metric-grain scope would make the worker rescan
+the same day once per metric for no correctness gain. `rollup_queue` gained one
+value in its domain check and nothing else.
+
+**The signal to revisit.** A third domain whose grain is not a user-day, or a
+metric that genuinely belongs to both domains. Neither exists, and the second
+would be a contradiction rather than a configuration: a metric is either
+observed or computed.
+
+---
+
+## N-10. `contributing_metric_ids`, and why the provenance column is not shared
+
+*Phase 7.*
+
+`metric_daily_source.contributing_workout_ids` answers "which canonical records
+produced this figure" from the row itself. A metrics-domain row has no
+workouts; its contributing records are `metrics`, whose ids are `bigint` rather
+than `uuid`. Reusing the column was not possible and widening it to `text[]`
+would have made both grains' provenance untyped, so the table carries a second,
+correctly typed column and each domain fills its own. The alternative — leaving
+the metrics grain with no provenance — would have made it the one part of the
+analytics layer that cannot say where its numbers came from.
+
+---
+
+## N-11. `day_attribution = 'wake_date'` is inert for scalar sleep
+
+*Phase 7. A boundary, recorded so it is a decision rather than an oversight.*
+
+Seed 0002 sets `sleep_duration.day_attribution = 'wake_date'`, from v2 §8.4 and
+decision D7. Nothing reads it: `metrics.local_date` is computed once at
+normalize time from the observation's own timestamp
+(`src/lib/import/timestamps.ts`), and the metrics rollup groups by that date.
+
+This is not a gap in Phase 7. A scalar `sleep_duration` observation is a point
+in time with no session behind it, so there is no start-of-sleep to attribute
+away from: the date it was recorded on **is** the wake date. Wake-date
+attribution becomes meaningful only when a sleep **session** carries a start
+and an end that straddle midnight, and sleep sessions are out of scope
+(`CLAUDE.md` §6).
+
+**The signal to revisit.** The phase that lands sleep sessions. At that point
+`day_attribution` must be read — most naturally in normalization, where
+`local_date` is decided — and this note becomes a requirement rather than a
+boundary.
+
+---
+
+## N-12. The minimum-observation threshold is an implementation decision
+
+*Phase 7.*
+
+`MIN_CHART_OBSERVATIONS = 3` in `src/lib/read-model/charts.ts` is **not**
+architecture-defined. No authoritative document states a value: v2 §12 Phase 9
+and v3 §5 Phase 9 place minimum-N gates and `INSUFFICIENT_DATA` in a later
+phase and specify no number, and `CLAUDE.md` Phase 7 requires
+"minimum-observation checks" without one. Three is taken from this
+repository's own precedent, `MIN_PROGRESSION_SESSIONS` in the Phase 4 training
+read model, which refuses to draw a progression through fewer than three
+sessions for the same reason.
+
+It is passed to `body_metric_summary` as a parameter rather than duplicated in
+SQL, so there is one definition of it and the database withholds the change
+columns below it rather than trusting every caller to hide them. Phase 9 is
+where a considered threshold per metric belongs, alongside coverage checks and
+`INSUFFICIENT_DATA` as a first-class result; until then this is a defensible
+default, not a specification.
+
+---
+
+## N-13. The inline rollup drain is user-scoped, because it runs in a request
+
+*Phase 7. A defect found by the Phase 6 end-to-end suite during Phase 7, and
+the reason `rollup_process_scopes` exists.*
+
+Phase 6 drains import jobs inline so a person sees the measurement they just
+typed. Phase 7 extended that to the rollup for the same reason: a measurement
+that is in the list but not yet on the chart reads as a bug.
+
+The first implementation called the ordinary `rollup_process_pending`, which is
+**global** — it claims any pending scope, for any user, up to its limit. Inside
+a cron tick that is exactly right. Inside a person's request it is not: one
+typed number then waits on every other user's import backlog. The Phase 6
+end-to-end suite caught it as a timeout, because by the time it runs the queue
+holds the scopes of every earlier spec's users.
+
+The claim loop is therefore `rollup_process_scopes(limit, worker, user_id)`,
+with `user_id` NULL meaning "any". Two wrappers preserve both call sites and
+both signatures:
+
+- `rollup_process_pending(limit, worker)` — the cron worker, unchanged.
+- `rollup_process_user_pending(user_id, limit, worker)` — manual entry, bounded
+  at 50 scopes.
+
+The inline path deliberately does **not** reclaim stale claims. Reclaiming is
+global maintenance, and a user's request is the wrong place to perform it.
+
+Anything past the inline bound stays queued. That is not a compromise; it is
+what the queue is for, and ADR-19's eventual consistency already covers it.
+
+**The signal to revisit.** An inline drain appearing anywhere else. Only manual
+entry has a person waiting on the result; every other producer should enqueue
+and let the worker drain.
+
+---
+
+## N-14. Manual entry reloads the route; it does not `router.refresh()` it
+
+*Phase 7. A real product defect, found by the Phase 6 end-to-end suite while
+Phase 7 was being built, and worth recording because the failure mode is
+silent and the wrong fix looks right.*
+
+`MeasurementForm` posted the measurement and then called `router.refresh()`.
+That is a best-effort transition, and the App Router aborts its RSC fetch when
+another update or a pending prefetch for the same route intervenes — silently.
+The trace of the failing run shows it exactly:
+`GET /body?_rsc=… → net::ERR_ABORTED`.
+
+The consequence is the worst outcome this form has. The POST returns 201, the
+measurement is written, normalized and rolled up correctly, and the page goes
+on showing the list without it. The person concludes nothing happened and
+records it again.
+
+Whether the race is lost depends on the payload size and on what the router
+already has in flight, so this was survivable while `/body` was a form and a
+list, and became reproducible the moment Phase 7 put nine chart cards on the
+same route. The bug was always there; Phase 7 made it deterministic.
+
+**Two fixes were tried and rejected**, and they are recorded because both look
+correct. Moving `setBusy(false)` ahead of the refresh does not help: React
+batches every update in the handler into one render, so the plain updates still
+land with the transition. Yielding a task before refreshing does not help
+either: an aborted prefetch for the same route, issued when the nav link came
+into view on the previous page, is enough on its own.
+
+**What it does instead** is `window.location.reload()`. A reload costs one
+render of a page the person is already looking at, and it cannot fail to show
+what was just written. For a form whose entire purpose is recording a
+measurement, that trade is not close.
+
+**The signal to revisit.** A Server Action would be the idiomatic fix: the
+action's own response carries the revalidated payload, so there is no separate
+fetch to abort. That is a worthwhile refactor of the write path and it is not
+Phase 7's job.
+
+**The rule meanwhile.** Do not depend on `router.refresh()` to show a user
+their own write.

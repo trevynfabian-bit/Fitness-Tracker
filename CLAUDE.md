@@ -136,10 +136,16 @@ Manual entry for weight, body fat, waist, and other measurements — routed thro
 
 **Exit:** a corrected measurement survives a full normalize rebuild with the corrected value intact. Verified by running the rebuild and comparing before/after.
 
-### Phase 7 — Body and recovery charts
+### Phase 7 — Body and recovery charts — COMPLETE
 Charts for weight, body fat, waist, HRV, RHR, sleep, rendered from `metric_daily` through the infrastructure Phase 5 builds. Ranges: 7D, 30D, 90D, 1Y, all time. Missing-data handling per `gap_policy`, division-by-zero protection, minimum-observation checks.
 
+Phase 7's first half is the plumbing Phase 5 deferred: the **metrics rollup domain**. Phase 6 lands body scalars in canonical `metrics` and nothing aggregated them. `rollup_recompute_metrics_day` is v2 §9.2/§9.3 for that grain, the worker dispatches on `rollup_queue.domain`, and both producers of canonical metrics rows now mark their days dirty.
+
+`metric_daily` is therefore written by two domains. They are partitioned by `metric_definitions.rollup_domain`, and each recompute deletes and rebuilds only its own keys. See `docs/architecture-implementation-notes.md` N-9: the Phase 5 whole-day delete was a real correctness problem once a second writer existed, and it was fixed forward-only.
+
 No AI. No insights. No Apple Health.
+
+**Exit:** a measurement typed on `/body` reaches `metric_daily` through the Phase 5 rollup infrastructure and is drawn from there; all six metrics render; every range works; each `gap_policy` behaves as the registry says and no day is silently zero-filled; a trend below the observation gate is refused rather than drawn; and neither rollup domain deletes the other's rows.
 
 ---
 

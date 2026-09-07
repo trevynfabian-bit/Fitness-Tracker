@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { daysForNaturalKeys, daysForWorkoutIds, enqueueTrainingDays } from "@/lib/analytics/rollup";
+import {
+  daysForMetricNaturalKeys,
+  daysForNaturalKeys,
+  daysForWorkoutIds,
+  enqueueMetricDays,
+  enqueueTrainingDays,
+} from "@/lib/analytics/rollup";
 import {
   OVERRIDE_MIN_REASON_LENGTH,
   blockingGuards,
@@ -301,8 +307,15 @@ async function enqueueAffectedDays(
 ): Promise<void> {
   try {
     const keys = (plan.retire_natural_keys as string[]) ?? [];
-    const dates = await daysForNaturalKeys(service, userId, keys);
-    await enqueueTrainingDays(service, userId, dates, "retirement");
+    // Both grains, from one key set. A plan's keys resolve against whichever
+    // canonical table owns them and against nothing else, so this is one call
+    // per domain rather than a decision about which domain a plan is in.
+    const [trainingDays, metricDays] = await Promise.all([
+      daysForNaturalKeys(service, userId, keys),
+      daysForMetricNaturalKeys(service, userId, keys),
+    ]);
+    await enqueueTrainingDays(service, userId, trainingDays, "retirement");
+    await enqueueMetricDays(service, userId, metricDays, "retirement");
   } catch (cause) {
     console.error("rollup enqueue after decision:", cause instanceof Error ? cause.message : cause);
   }

@@ -109,9 +109,14 @@ do update set
 
 -- manual_entry marks the metrics a person can meaningfully measure and type.
 -- All nine of these are; the derived training aggregates seeded in 0003 are not.
+--
+-- rollup_domain is 'metrics' for all nine: each is an observation rolled up
+-- from canonical metrics by rollup_recompute_metrics_day, not an aggregate the
+-- training recompute produces. Stated explicitly rather than relying on the
+-- column default, so the assignment is traceable to a decision.
 insert into public.metric_definitions
-  (user_id, key, display_name, description, canonical_unit_id, default_aggregation, manual_entry)
-select null, v.key, v.display_name, v.description, u.id, v.default_aggregation, true
+  (user_id, key, display_name, description, canonical_unit_id, default_aggregation, manual_entry, rollup_domain)
+select null, v.key, v.display_name, v.description, u.id, v.default_aggregation, true, 'metrics'
 from (
   values
     ('weight',                 'Weight',                 'Total body mass.',                                              'kg',      'mean'),
@@ -132,6 +137,7 @@ do update set
   canonical_unit_id   = excluded.canonical_unit_id,
   default_aggregation = excluded.default_aggregation,
   manual_entry        = excluded.manual_entry,
+  rollup_domain       = excluded.rollup_domain,
   is_active           = true,
   updated_at          = now();
 

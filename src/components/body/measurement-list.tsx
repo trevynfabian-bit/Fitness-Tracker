@@ -26,7 +26,11 @@ export function MeasurementList({
   const [correcting, setCorrecting] = useState<Measurement | null>(null);
 
   return (
-    <ul className="divide-y divide-border rounded-lg border border-border">
+    // role="list" is not redundant here. Tailwind's preflight sets
+    // list-style: none, and Chromium drops the list/listitem roles from the
+    // accessibility tree when it does, so a screen reader would announce these
+    // as loose paragraphs rather than as a list of measurements.
+    <ul role="list" className="divide-y divide-border rounded-lg border border-border">
       {measurements.map((measurement) => (
         <li key={measurement.id} className="px-4 py-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">

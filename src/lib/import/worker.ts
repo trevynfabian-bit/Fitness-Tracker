@@ -16,7 +16,12 @@ import {
   retireRatio,
   type ReconciliationInput,
 } from "./reconciliation";
-import { daysForNaturalKeys, enqueueTrainingDays } from "@/lib/analytics/rollup";
+import {
+  daysForMetricNaturalKeys,
+  daysForNaturalKeys,
+  enqueueMetricDays,
+  enqueueTrainingDays,
+} from "@/lib/analytics/rollup";
 import { mappingSpecSchema, type MappingSpec, type RegistrySnapshot } from "./types";
 
 /**
@@ -437,11 +442,18 @@ async function runNormalize(db: Db, job: JobRow): Promise<BatchOutcome> {
 }
 
 /**
- * Marks every day this import's rows landed on as dirty.
+ * Marks every day this import's rows landed on as dirty, in both domains.
  *
  * The days come from the natural keys the file produced, not from which rows
  * carry this import_id: a re-import whose rows are all unchanged stamps no
  * import_id at all, and the file still determines which days it covered.
+ *
+ * One set of natural keys, resolved against both canonical grains. Which grain
+ * a key belongs to is not something this function decides or needs to know: a
+ * strength key matches no metrics row and a metric key matches no workout, so
+ * each lookup returns exactly the days its own domain owns and the other
+ * returns nothing. That is what lets a Hevy import and a typed measurement go
+ * through the same line of code (I-9).
  *
  * A failure here must not fail the import. Analytics are a regenerable leaf
  * (v2 section 1.4) and the queue can be rebuilt; canonical data is not and
@@ -457,8 +469,13 @@ async function enqueueTouchedDays(db: Db, job: JobRow): Promise<void> {
     if (error) throw new Error(error.message);
 
     const keys = [...new Set((data ?? []).flatMap((r) => (r.normalized_keys as string[]) ?? []))];
-    const dates = await daysForNaturalKeys(db, job.user_id, keys);
-    await enqueueTrainingDays(db, job.user_id, dates, "import");
+
+    const [trainingDays, metricDays] = await Promise.all([
+      daysForNaturalKeys(db, job.user_id, keys),
+      daysForMetricNaturalKeys(db, job.user_id, keys),
+    ]);
+    await enqueueTrainingDays(db, job.user_id, trainingDays, "import");
+    await enqueueMetricDays(db, job.user_id, metricDays, "import");
   } catch (cause) {
     console.error(
       `rollup enqueue failed for import ${job.import_id}:`,

@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:rls": "bash tests/rls/run-rls-tests.sh",
     "test:routes": "bash tests/http/run-route-protection-tests.sh",
-    "test:all": "npm run typecheck && npm run test && npm run test:rls && npm run test:phase2 && npm run test:step0 && npm run test:phase4 && npm run test:phase5 && npm run test:phase5_1 && npm run test:phase6 && npm run test:routes && npm run test:e2e",
+    "test:all": "npm run typecheck && npm run test && npm run test:rls && npm run test:phase2 && npm run test:step0 && npm run test:phase4 && npm run test:phase5 && npm run test:phase5_1 && npm run test:phase6 && npm run test:phase7 && npm run test:routes && npm run test:e2e",
     "db:apply:local": "bash scripts/db-local-apply.sh",
     "test:e2e": "bash tests/e2e/run-e2e-tests.sh",
     "supabase:start": "supabase start",
@@ -22,7 +22,8 @@
     "test:phase4": "bash tests/phase4/run-phase4-tests.sh",
     "test:phase5": "bash tests/phase5/run-phase5-tests.sh",
     "test:phase5_1": "bash tests/phase5_1/run-phase5_1-tests.sh",
-    "test:phase6": "bash tests/phase6/run-phase6-tests.sh"
+    "test:phase6": "bash tests/phase6/run-phase6-tests.sh",
+    "test:phase7": "bash tests/phase7/run-phase7-tests.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -29,7 +28,6 @@ export function MeasurementForm({
   correcting?: Measurement;
   onCancel?: () => void;
 }) {
-  const router = useRouter();
   const initialMetric =
     metrics.find((m) => m.key === correcting?.metricKey) ?? metrics[0];
 
@@ -76,12 +74,28 @@ export function MeasurementForm({
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "could not record the measurement");
-      if (!correcting) setValue("");
-      onCancel?.();
-      router.refresh();
+
+      // A full reload, not router.refresh().
+      //
+      // router.refresh() is a best-effort transition: the App Router aborts
+      // its RSC fetch when another update or a pending prefetch for the same
+      // route intervenes, and it does so silently. The failure mode is the
+      // worst one this form has — the measurement is written, normalized and
+      // rolled up correctly, and the page goes on showing the list without
+      // it, so the person believes nothing happened and records it twice.
+      //
+      // Whether the race is lost depends on payload size and on what the
+      // router already has in flight, which is why this was survivable while
+      // /body was a form and a list and became reproducible once the charts
+      // were added to the same route. See
+      // docs/architecture-implementation-notes.md N-14.
+      //
+      // A reload costs one render of a page the person is already looking at,
+      // and it cannot fail to show what was just written. For a form whose
+      // whole purpose is recording a measurement, that trade is not close.
+      window.location.reload();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
       setBusy(false);
     }
   }

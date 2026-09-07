@@ -86,7 +86,7 @@ test.describe("Phase 6 — manual body tracking", () => {
     expect(ownerId).toBeTruthy();
 
     await page.goto("/body");
-    await expect(page.getByRole("heading", { name: "Body" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Body", exact: true })).toBeVisible();
     await expect(page.getByText(/Nothing recorded yet/)).toBeVisible();
 
     // The registry decides what can be typed. A derived aggregate must not be
@@ -107,7 +107,9 @@ test.describe("Phase 6 — manual body tracking", () => {
     await page.selectOption("#unit", "kg");
     await page.getByRole("button", { name: "Record measurement" }).click();
 
-    await expect(page.getByText("82.4")).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.locator("main ul > li").filter({ hasText: "82.4" }),
+    ).toBeVisible({ timeout: 15_000 });
 
     // I-1: the canonical row exists because a raw record does, not instead.
     const raw = await rawRecords(ownerId);

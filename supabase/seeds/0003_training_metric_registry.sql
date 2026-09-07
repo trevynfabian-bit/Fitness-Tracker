@@ -31,6 +31,15 @@
 --
 --   training_reps, training_duration_s -> 'null', for the same reason: a
 --   session recording neither is an absence, not a zero.
+--
+-- WHY rollup_domain IS 'training' FOR EVERY ONE OF THESE
+--
+-- Phase 7 added a second rollup domain, so metric_daily is now written by two
+-- recompute functions. Each deletes and rebuilds only the keys its own domain
+-- owns, and the registry is what says which those are — a key list written
+-- into SQL would be the free-text identifier I-6 forbids. These seven are
+-- aggregations of the strength model, so the training recompute owns them.
+-- Everything else defaults to 'metrics'.
 -- ============================================================================
 
 begin;
@@ -39,8 +48,8 @@ begin;
 -- rollup computes from canonical training data. A typed value would be a
 -- second, unreconcilable source of truth for a figure that already has one.
 insert into public.metric_definitions
-  (user_id, key, display_name, description, canonical_unit_id, default_aggregation, gap_policy, manual_entry)
-select null, v.key, v.display_name, v.description, u.id, v.default_aggregation, v.gap_policy, false
+  (user_id, key, display_name, description, canonical_unit_id, default_aggregation, gap_policy, manual_entry, rollup_domain)
+select null, v.key, v.display_name, v.description, u.id, v.default_aggregation, v.gap_policy, false, 'training'
 from (
   values
     ('training_workouts',       'Training Workouts',
@@ -74,6 +83,7 @@ do update set
   default_aggregation = excluded.default_aggregation,
   gap_policy          = excluded.gap_policy,
   manual_entry        = excluded.manual_entry,
+  rollup_domain       = excluded.rollup_domain,
   is_active           = true,
   updated_at          = now();
 

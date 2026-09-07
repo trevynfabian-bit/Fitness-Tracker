@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { drainUserRollupQueue } from "@/lib/analytics/rollup";
 import { rowHash } from "@/lib/import/natural-key";
 import { NORMALIZE_VERSION } from "@/lib/import/normalize";
 import { MANUAL_METRICS_PROFILE } from "@/lib/import/profiles";
@@ -135,6 +136,26 @@ export async function recordMeasurements(
   // it runs is a deployment detail; a one-row import has no reason to wait for
   // a cron tick, and the user gets to see what they just recorded.
   const outcomes = await drainImportJobs(db, importId);
+
+  // And the analytics scopes normalization just marked dirty, for the same
+  // reason: a measurement that is in the list but not yet on the chart reads
+  // as a bug.
+  //
+  // This user's scopes only, and bounded. The queue is global; draining all of
+  // it here would make one typed number wait on every other user's import
+  // backlog, inside this person's request.
+  //
+  // A failure here must not fail the entry — the canonical row is already
+  // written and correct, the scope stays dirty, and the next worker tick or
+  // rebuild computes it (v2 §1.4).
+  try {
+    await drainUserRollupQueue(db, userId);
+  } catch (cause) {
+    console.error(
+      `rollup drain after manual import ${importId}:`,
+      cause instanceof Error ? cause.message : cause,
+    );
+  }
 
   const { data: record } = await db
     .from("data_imports")

@@ -30,10 +30,19 @@ export const ROLLUP_BATCH_SCOPES = 200;
  */
 export const ROLLUP_STALE_CLAIM = "5 minutes";
 
+export type EnqueueReason = "import" | "retirement" | "rebuild";
+
 export type RollupResult = {
   processed: number;
   failed: number;
-  errors: { scope_id: number; user_id: string; local_date: string; attempts: number; error: string }[];
+  errors: {
+    scope_id: number;
+    user_id: string;
+    domain: string;
+    local_date: string;
+    attempts: number;
+    error: string;
+  }[];
 };
 
 /**
@@ -46,12 +55,39 @@ export async function enqueueTrainingDays(
   db: Db,
   userId: string,
   dates: string[],
-  reason: "import" | "retirement" | "rebuild",
+  reason: EnqueueReason,
+): Promise<number> {
+  return enqueue(db, "rollup_enqueue_training_days", userId, dates, reason);
+}
+
+/**
+ * The metrics-domain counterpart (Phase 7).
+ *
+ * Same contract, same idempotence, a different scan on the other end. A day is
+ * dirty because canonical metrics rows for that day changed; whether they came
+ * from a file or from somebody typing a number is irrelevant here, as it is
+ * everywhere else in the engine (I-9).
+ */
+export async function enqueueMetricDays(
+  db: Db,
+  userId: string,
+  dates: string[],
+  reason: EnqueueReason,
+): Promise<number> {
+  return enqueue(db, "rollup_enqueue_metric_days", userId, dates, reason);
+}
+
+async function enqueue(
+  db: Db,
+  fn: "rollup_enqueue_training_days" | "rollup_enqueue_metric_days",
+  userId: string,
+  dates: string[],
+  reason: EnqueueReason,
 ): Promise<number> {
   const unique = [...new Set(dates.filter(Boolean))];
   if (unique.length === 0) return 0;
 
-  const { data, error } = await db.rpc("rollup_enqueue_training_days", {
+  const { data, error } = await db.rpc(fn, {
     p_user_id: userId,
     p_dates: unique,
     p_reason: reason,
@@ -84,6 +120,40 @@ export async function daysForNaturalKeys(
   for (let i = 0; i < naturalKeys.length; i += 200) {
     const { data, error } = await db
       .from("strength_workouts")
+      .select("local_date")
+      .eq("user_id", userId)
+      .in("natural_key", naturalKeys.slice(i, i + 200));
+    if (error) throw new Error(`rollup scope: ${error.message}`);
+    for (const row of data ?? []) dates.add(row.local_date as string);
+  }
+
+  return [...dates];
+}
+
+/**
+ * The local dates a set of canonical METRICS sit on (Phase 7).
+ *
+ * The metrics-grain sibling of daysForNaturalKeys, and it exists for the same
+ * reason: a re-import or a re-entry whose rows are all unchanged stamps no
+ * import_id on anything, while the natural keys still say perfectly well which
+ * days were covered.
+ *
+ * Retired rows are included on purpose. A day whose observation was just
+ * retired is exactly a day whose daily value must be recomputed — and the
+ * recompute reads v_metrics, so the retired row contributes nothing to the
+ * answer it produces.
+ */
+export async function daysForMetricNaturalKeys(
+  db: Db,
+  userId: string,
+  naturalKeys: string[],
+): Promise<string[]> {
+  if (naturalKeys.length === 0) return [];
+  const dates = new Set<string>();
+
+  for (let i = 0; i < naturalKeys.length; i += 200) {
+    const { data, error } = await db
+      .from("metrics")
       .select("local_date")
       .eq("user_id", userId)
       .in("natural_key", naturalKeys.slice(i, i + 200));
@@ -138,4 +208,33 @@ export async function drainRollupQueue(
 
   const result = (data ?? { processed: 0, failed: 0, errors: [] }) as RollupResult;
   return { ...result, reclaimed: Number(reclaimed ?? 0) };
+}
+
+/** How many of one user's scopes an inline drain will take before yielding. */
+export const ROLLUP_INLINE_SCOPES = 50;
+
+/**
+ * Drains one user's pending scopes, inline, inside their own request.
+ *
+ * Manual entry uses this so the measurement a person just typed is on the
+ * chart when the page comes back. It is user-scoped and bounded on purpose:
+ * the queue is global and can hold another user's import backlog, and a typed
+ * number must not wait on it. Anything past the bound stays queued for the
+ * cron worker, which is what the queue is for.
+ *
+ * It deliberately does NOT reclaim stale claims: that is a global maintenance
+ * action, and a user's request is the wrong place to perform one.
+ */
+export async function drainUserRollupQueue(
+  db: Db,
+  userId: string,
+  limit = ROLLUP_INLINE_SCOPES,
+): Promise<RollupResult> {
+  const { data, error } = await db.rpc("rollup_process_user_pending", {
+    p_user_id: userId,
+    p_limit: limit,
+    p_worker: "inline",
+  });
+  if (error) throw new Error(`rollup drain: ${error.message}`);
+  return (data ?? { processed: 0, failed: 0, errors: [] }) as RollupResult;
 }
