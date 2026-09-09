@@ -33,10 +33,15 @@ for migration in "${REPO_ROOT}"/supabase/migrations/*.sql; do
   $PSQL -d "$DB_NAME" -f "$migration"
 done
 
-echo "==> applying system registry seed"
-$PSQL -d "$DB_NAME" -f "${REPO_ROOT}/supabase/seeds/0001_system_registry.sql"
+echo "==> applying reference-data seeds"
+for seed in "${REPO_ROOT}"/supabase/seeds/*.sql; do
+  echo "    - $(basename "$seed")"
+  $PSQL -d "$DB_NAME" -f "$seed"
+done
 
-echo "==> re-applying seed to prove idempotency"
-$PSQL -d "$DB_NAME" -f "${REPO_ROOT}/supabase/seeds/0001_system_registry.sql"
+echo "==> re-applying seeds to prove idempotency"
+for seed in "${REPO_ROOT}"/supabase/seeds/*.sql; do
+  $PSQL -d "$DB_NAME" -f "$seed"
+done
 
 echo "==> done: ${DB_NAME}"

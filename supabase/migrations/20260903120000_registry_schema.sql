@@ -10,8 +10,8 @@
 --   I-6  No free-text identifiers. Every metric / exercise / activity / event
 --        resolves to a registry row; aliases are the only free text and they
 --        exist solely to resolve TO a registry row.
---   I-7  Measurement values are NUMERIC(18,6). See the note on
---        unit_conversions.factor below for the one deliberate exception.
+--   I-7  Measurement values are NUMERIC(18,6). Conversion coefficients are
+--        NUMERIC(30,15) by policy; see the note on unit_conversions below.
 --   I-8  Every table carries user_id and an RLS policy (policies live in the
 --        next migration). No policy requires a join.
 --   I-9  Vendor names never appear in engine code. `source_key` is metadata.
@@ -176,13 +176,25 @@ create index units_user_id_idx on public.units (user_id);
 -- unit_conversions
 --   value_in_to_unit = value_in_from_unit * factor + "offset"
 --
---   NOTE ON I-7: I-7 fixes *measurement values* at NUMERIC(18,6). A conversion
---   factor is a coefficient, not a value. Storing 1 lb -> kg as NUMERIC(18,6)
---   would truncate the exact factor 0.45359237 to 0.453592, injecting a
---   systematic ~1.6e-7 relative error into every imported imperial mass before
---   it is ever rounded to a stored value. factor/"offset" are therefore
---   NUMERIC(30,15). Every column that holds a measurement remains
---   NUMERIC(18,6). This is called out explicitly rather than decided silently.
+--   PRECISION POLICY (not a deviation from I-7)
+--
+--   I-7 governs stored measurement values, which are NUMERIC(18,6) without
+--   exception. factor and "offset" are conversion coefficients, not measured
+--   values, and are NUMERIC(30,15) by policy so that a coefficient is never
+--   the source of error in a value derived from it.
+--
+--   Scale 15 is required, not preferred. At scale 6 the reciprocal factors
+--   collapse:
+--     ms -> h    1/3600000 = 2.777...e-7  rounds to 0.000000, which is both a
+--                wrong answer and a violation of the factor <> 0 constraint
+--                below, so the reference-data seed would fail to apply at all
+--     ms -> min  1/60000   rounds to 0.000017, a 2% error
+--     s  -> h    1/3600    rounds to 0.000278, a 0.08% error
+--     lb -> kg   0.45359237 rounds to 0.453592, a 0.00008% systematic bias
+--                applied to every imported imperial mass
+--
+--   Applies to these two columns only. No other column in the schema holds a
+--   coefficient, and every column that holds a measurement is NUMERIC(18,6).
 -- ---------------------------------------------------------------------------
 
 create table public.unit_conversions (

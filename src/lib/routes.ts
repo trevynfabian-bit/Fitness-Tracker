@@ -4,7 +4,15 @@
  */
 
 /** Route prefixes that require an authenticated session. */
-export const PROTECTED_PREFIXES = ["/dashboard", "/registry"] as const;
+export const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/history",
+  "/exercises",
+  "/body",
+  "/settings",
+  "/registry",
+  "/import",
+] as const;
 
 /** Routes an authenticated user should not sit on. */
 export const AUTH_ROUTES = ["/login", "/signup"] as const;

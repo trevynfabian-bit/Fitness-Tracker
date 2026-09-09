@@ -3,39 +3,76 @@
 # `supabase link --project-ref <ref>` before running `supabase db push`.
 project_id = "health-platform"
 
-[db]
-port = 54322
-major_version = 16
-
-[db.seed]
-enabled = true
-sql_paths = ["./seed.sql"]
-
 [api]
 enabled = true
 port = 54321
 schemas = ["public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
+# `auto_expose_new_tables` is deliberately left unset so the local stack matches
+# the hosted default (new public tables are reachable by the Data API roles
+# without explicit GRANTs). The RLS migration revokes those defaults explicitly,
+# and the RLS suite asserts that the revoke holds under this cloud-parity
+# setting rather than under a locally hardened one.
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.migrations]
+enabled = true
+
+[db.seed]
+enabled = true
+# Ordered glob over the reference-data seeds. The CLI executes these over the
+# wire, so they must be plain SQL with no psql meta-commands.
+sql_paths = ["./seeds/*.sql"]
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://localhost:3000/auth/confirm"]
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = [
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3000/auth/confirm",
+  "http://localhost:3000",
+  "http://localhost:3000/auth/confirm",
+]
 jwt_expiry = 3600
 enable_signup = true
+enable_anonymous_sign_ins = false
+# Matches the 8-character minimum enforced by the sign-up form's zod schema.
+minimum_password_length = 8
+
+[auth.rate_limit]
+# Local testing signs several users up in quick succession. The hosted default
+# of 2 emails/hour makes that flaky; it has no bearing on production config.
+email_sent = 100
+sign_in_sign_ups = 300
+token_verifications = 300
 
 [auth.email]
 enable_signup = true
-enable_confirmations = false
+# Email confirmation is ON so the confirmation flow is a real, tested path
+# rather than an untested branch.
+enable_confirmations = true
 double_confirm_changes = true
+
+[auth.email.template.confirmation]
+subject = "Confirm your Health Platform account"
+content_path = "./supabase/templates/confirmation.html"
+
+[local_smtp]
+enabled = true
+port = 54324
 
 [studio]
 enabled = true
 port = 54323
 
 [storage]
-enabled = false
+enabled = true
+file_size_limit = "50MiB"
 
 [analytics]
 enabled = false

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Alert } from "@/components/ui/alert";
+import { Card, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -14,26 +14,20 @@ type MetricDefinitionRow = {
   canonical_unit_id: string;
 };
 
-type UnitRow = {
-  id: string;
-  key: string;
-};
+type UnitRow = { id: string; key: string };
 
-export default async function DashboardPage() {
+/**
+ * Account and registry. The metric registry lived on the dashboard while the
+ * dashboard had nothing else to show; it is reference data, not training
+ * history, so it belongs here now that the dashboard reads real data.
+ */
+export default async function SettingsPage() {
   const supabase = await createClient();
-
-  // Defence in depth: middleware already gates this path, but a Server
-  // Component must never assume the middleware ran.
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  if (!user) {
-    redirect("/login");
-  }
-
-  // Two plain queries rather than a PostgREST embed: the registry is small and
-  // this keeps the read to the simplest possible request shape.
   const [definitionsResult, unitsResult] = await Promise.all([
     supabase
       .from("metric_definitions")
@@ -49,24 +43,35 @@ export default async function DashboardPage() {
   );
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-12">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Signed in as {user.email}
-          </p>
-        </div>
-        <SignOutButton />
+    <main className="mx-auto w-full max-w-5xl px-6 py-10">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Account and reference data.
+        </p>
       </header>
 
-      <section className="mt-10">
+      <Card className="mt-6">
+        <CardTitle>Account</CardTitle>
+        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-muted-foreground">Email</dt>
+            <dd>{user.email}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">User id</dt>
+            <dd className="font-mono text-xs">{user.id}</dd>
+          </div>
+        </dl>
+      </Card>
+
+      <section className="mt-6">
         <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Metric registry
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Read through the anon key under row level security. System definitions
-          are shared; anything you define is visible only to you.
+          Read through the anon key under row level security. System definitions are shared;
+          anything you define is visible only to you.
         </p>
 
         {error ? (
@@ -90,7 +95,9 @@ export default async function DashboardPage() {
                   <tr key={definition.key} className="border-t border-border">
                     <td className="px-3 py-2 font-mono text-xs">{definition.key}</td>
                     <td className="px-3 py-2">{definition.display_name}</td>
-                    <td className="px-3 py-2">{unitKeyById.get(definition.canonical_unit_id) ?? "—"}</td>
+                    <td className="px-3 py-2">
+                      {unitKeyById.get(definition.canonical_unit_id) ?? "—"}
+                    </td>
                     <td className="px-3 py-2">{definition.default_aggregation}</td>
                     <td className="px-3 py-2 text-muted-foreground">
                       {definition.user_id === null ? "system" : "yours"}
@@ -101,13 +108,6 @@ export default async function DashboardPage() {
             </table>
           </div>
         )}
-      </section>
-
-      <section className="mt-10">
-        <Alert tone="info">
-          No health data has been imported. Import is Phase 3; nothing in this
-          application fabricates measurements.
-        </Alert>
       </section>
     </main>
   );

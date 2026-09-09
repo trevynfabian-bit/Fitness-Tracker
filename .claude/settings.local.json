@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx ngodingpakeai:*)",
+      "Bash(npx --yes ngodingpakeai:*)"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "profile_id": "manual.metrics.v1",
+  "name": "Manual entry — measurements",
+  "source_key": "manual",
+  "template": "metrics",
+  "detection": {
+    "required_columns": [],
+    "signature_tokens": [],
+    "min_similarity": 1
+  },
+  "import_mode": "append",
+  "mapping_spec": {
+    "template": "metrics",
+    "layout": "long",
+    "timestamp": {
+      "columns": ["measured_at"],
+      "timezone": { "mode": "embedded" }
+    },
+    "metric_column": "metric_key",
+    "value_column": "value",
+    "unit_column": "unit",
+    "identity_granularity": "minute",
+    "constants": { "source_key": "manual" },
+    "row_filters": [],
+    "on_unmapped_column": "ignore"
+  }
+}

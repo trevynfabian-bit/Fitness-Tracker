@@ -19,6 +19,8 @@ Stack: Next.js + TypeScript + Tailwind + shadcn/ui, Supabase (Postgres, Auth, RL
 | `docs/architecture/health-platform-architecture-v2.md` | Base specification |
 | `docs/architecture/health-platform-architecture-v3.md` | Amendment + Architecture Decision Record |
 | `docs/prd.md` | Product requirements |
+| `docs/roadmap.md` | Phase status and sequencing. Authoritative on **what has been built and what comes next**, and on nothing else |
+| `docs/architecture-implementation-notes.md` | Accepted deviations and boundaries not visible from the schema |
 
 **v3 supersedes v2 in these sections only:** §2.2 (`raw_records`), §5 (job lifecycle), §7.4 (snapshot reconciliation), §12 (implementation order), §13 (open decisions). Everything else in v2 stands.
 
@@ -58,6 +60,13 @@ Violating any of these silently destroys the product's core guarantee. They are 
 
 Implement one phase at a time. Do not start the next phase until the current one's exit criteria are verified by an actual test run.
 
+**Sequencing lives in `docs/roadmap.md`.** The phase list below matches it. It
+has been renumbered once, in the open: what v2 §12 called Phase 4 (manual body
+tracking) is now Phase 6, because the training product surface was pulled
+forward. `docs/roadmap.md` §3 records each scope change and what settled it.
+The architecture documents were deliberately not rewritten — they record
+decisions, and the decisions still stand.
+
 After each phase, produce an **Implementation Report**:
 
 - Files created
@@ -70,21 +79,21 @@ After each phase, produce an **Implementation Report**:
 
 **Never claim something works without having run it.** "Should work", "this implements X", and "the tests are set up" are not results. If you did not execute it, say so.
 
-### Phase 1 — Foundation
+### Phase 1 — Foundation — COMPLETE
 Next.js + TypeScript project structure, env var validation, Supabase integration. Auth: sign up, login, logout, protected routes. Migrations for `sources`, `units`, `unit_conversions`, `metric_definitions`, `metric_aliases`, `exercise_definitions`, `exercise_aliases`, `activity_types`, `event_definitions`. RLS on every user-owned table. Seed system registry for: weight, body_fat_percentage, waist_circumference, resting_heart_rate, heart_rate_variability, sleep_duration, steps, active_energy, recovery_score.
 
 No mock health data. Ever.
 
 **Exit:** a user can sign up, log in, reach a protected route, and query only their own rows. RLS tested explicitly with two accounts, attempting a cross-user read from the client and confirming it returns zero rows.
 
-### Phase 2 — Data foundation
+### Phase 2 — Data foundation — COMPLETE
 `import_profiles`, `data_imports`, `import_jobs`, `raw_records`, `import_coverage`. Canonical tables for the first slice only: `metrics`, `strength_workouts`, `strength_exercises`, `strength_sets`. Append-only trigger, natural keys, revision strategy, import modes, status lifecycle, constraints and indexes.
 
 No importer UI yet. No other domains yet.
 
 **Exit:** the schema supports a complete Hevy import pipeline with no further schema changes required. Demonstrate by writing the pipeline's inserts as raw SQL against a sample row and showing every constraint holds.
 
-### Phase 3 — First vertical slice: Hevy (hard gate)
+### Phase 3 — First vertical slice: Hevy (hard gate) — COMPLETE
 End-to-end Universal Import Engine: upload, profiling, template selection, column mapping, preview, confirmation, background job, progress, summary. Hevy ships as a profile JSON plus a fixture, using the declarative transform library.
 
 **Test A:** import a real Hevy export. Verify raw records, normalized workouts/exercises/sets, and that every canonical row traces back to its raw record and file.
@@ -93,15 +102,57 @@ End-to-end Universal Import Engine: upload, profiling, template selection, colum
 
 **If Test B fails, STOP.** Do not work around it, do not soften the guard, do not proceed to Phase 4. Fix the reconciliation implementation.
 
-### Phase 4 — Manual body tracking
+### Phase 3.1 — Hevy profile against a real export — COMPLETE
+*(A corrective phase, not a numbered step in v2 §12 or v3 §5. See `docs/roadmap.md` SC-6 and `docs/architecture-implementation-notes.md` N-15.)*
+
+Phase 3 was verified against a faithful reconstruction of the Hevy column contract, and the reconstruction differed from reality in the one field that broke the importer: `mapping_spec.timestamp.format` was declared by the profile, validated by the schema, and read by no code. Phase 3.1 makes the declared format live and authoritative — when a profile declares a format, that format governs and a value that contradicts it fails loudly, with no fallback to inference — corrects the Hevy profile to the shape Hevy emits, and commits an anonymized slice of a real export as the acceptance fixture §5 always required.
+
+**Exit:** a real Hevy export imports end to end, and Test A and Test B both still pass against the converted fixtures.
+
+### Phase 4 — Training product surface — COMPLETE
+*(This slot held "manual body tracking" in v2 §12. That work is now Phase 6. See `docs/roadmap.md` SC-1.)*
+
+A read-only product layer over the canonical training model: a read model of `training_*` SQL functions over the `v_*` views, and the screens that consume it — dashboard, workout history, workout detail, exercise explorer, exercise progression, settings.
+
+Phase 4 writes nothing. No canonical row originates outside the import pipeline.
+
+**Exit:** canonical imported data → secure query layer → dashboard/history/exercise UI, verified end to end, with an empty account showing an empty state rather than a zero-filled chart, and cross-user isolation proven at the database, the read model and the page.
+
+### Phase 5 — Analytics foundation and incremental derived metrics — COMPLETE
+*(v3 §5's Phase 5, applied to the metrics the product actually has. See `docs/roadmap.md` SC-2.)*
+
+`source_precedence`, `metric_daily_source` → `metric_daily`, the exercise-grain pair, `rollup_queue`, invalidation and recomputation, the rollup worker, and the selective migration of the Phase 4 read model onto derived metrics.
+
+Derived metrics are a disposable read optimisation. They must always be reproducible from canonical truth, must never continue counting retired data, and must never be recomputed by arithmetic delta.
+
+No AI. No insights. No Apple Health. No formula-versioned derived rows in `metrics` — that is v3 Phase 7.
+
+**Exit:** derived metric values equal canonical aggregation; retiring canonical data removes its contribution after recomputation; processing the same scope repeatedly does not change totals; users remain isolated; dashboard reads no longer scan the user's lifetime set history.
+
+### Phase 5.1 — Reconciliation G4 override resolution — COMPLETE
+*(A corrective phase, not a numbered step in v2 §12 or v3 §5. See `docs/roadmap.md` SC-4 and `docs/architecture-implementation-notes.md` N-8.)*
+
+G4 is a safety gate with an audited human override, which is what v3 §4.3 always described. A blocked plan still cannot be confirmed by any automatic path; it can be confirmed by its owner when every guard that blocked it carries an acknowledged, reasoned, attributable override. G9 remains absolute, the original verdict is never rewritten, and an override grants permission to proceed past a blocked verdict and nothing else.
+
+**Exit:** a blocked plan refuses ordinary confirmation, an owner can override it through a strongly confirmed and audited workflow, another user and an anonymous caller can do neither, repeating any of it changes nothing, and the derived analytics that follow equal canonical truth.
+
+### Phase 6 — Manual body tracking — COMPLETE
+*(This was Phase 4 in v2 §12. Unchanged in substance.)*
+
 Manual entry for weight, body fat, waist, and other measurements — routed through synthetic import → raw record → normalization → canonical metric. Corrections via superseding raw records with higher `precedence_rank`.
 
 **Exit:** a corrected measurement survives a full normalize rebuild with the corrected value intact. Verified by running the rebuild and comparing before/after.
 
-### Phase 5 — Analytics foundation
-`metric_daily`, `metric_daily_source`, `rollup_queue`, incremental rollups. Charts for weight, body fat, waist, HRV, RHR, sleep. Ranges: 7D, 30D, 90D, 1Y, all time. Missing-data handling per `gap_policy`, division-by-zero protection, minimum-observation checks.
+### Phase 7 — Body and recovery charts — COMPLETE
+Charts for weight, body fat, waist, HRV, RHR, sleep, rendered from `metric_daily` through the infrastructure Phase 5 builds. Ranges: 7D, 30D, 90D, 1Y, all time. Missing-data handling per `gap_policy`, division-by-zero protection, minimum-observation checks.
+
+Phase 7's first half is the plumbing Phase 5 deferred: the **metrics rollup domain**. Phase 6 lands body scalars in canonical `metrics` and nothing aggregated them. `rollup_recompute_metrics_day` is v2 §9.2/§9.3 for that grain, the worker dispatches on `rollup_queue.domain`, and both producers of canonical metrics rows now mark their days dirty.
+
+`metric_daily` is therefore written by two domains. They are partitioned by `metric_definitions.rollup_domain`, and each recompute deletes and rebuilds only its own keys. See `docs/architecture-implementation-notes.md` N-9: the Phase 5 whole-day delete was a real correctness problem once a second writer existed, and it was fixed forward-only.
 
 No AI. No insights. No Apple Health.
+
+**Exit:** a measurement typed on `/body` reaches `metric_daily` through the Phase 5 rollup infrastructure and is drawn from there; all six metrics render; every range works; each `gap_policy` behaves as the registry says and no day is silently zero-filled; a trend below the observation gate is refused rather than drawn; and neither rollup domain deletes the other's rows.
 
 ---
 
@@ -123,9 +174,14 @@ No AI. No insights. No Apple Health.
 
 Do not build these, do not scaffold them, do not add "future-proofing" hooks for them:
 
-Apple Health, Garmin, Oura, Fitbit, or any vendor beyond Hevy. AI or LLM anything. Insights engine. Timeline. Derived metrics. Cross-source entity resolution. Sleep sessions. Labs. Custom events. Weekly/monthly rollup tables. Table partitioning. Multi-user UI. Mobile. PDF/OCR.
+Apple Health, Garmin, Oura, Fitbit, or any vendor beyond Hevy. AI or LLM anything. Insights engine. Timeline. Cross-source entity resolution. Sleep sessions. Labs. Custom events. Weekly/monthly rollup **tables**. Table partitioning. Multi-user UI. Mobile. PDF/OCR.
 
-They are in the roadmap. They are not in the next five phases.
+Two entries on that list were narrowed when Phase 5 landed (`docs/roadmap.md` SC-3):
+
+- **Derived metrics.** Formula-versioned derived rows written into `metrics` — e1RM, pace, rolling baselines, sleep consistency, `formula_version` regeneration — remain out of scope; they are v3 Phase 7. Daily derived *aggregates* in the analytics layer are the substance of Phase 5 and are in scope.
+- **Weekly/monthly rollup tables.** Still out of scope. Weekly figures are aggregated from `metric_daily` on read, per v2 §9.5 and v3 F-09.
+
+Everything else on that list is in the roadmap. None of it is in the next five phases.
 
 ---
 

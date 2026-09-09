@@ -56,6 +56,48 @@ as $$
   )::text
 $$;
 
+-- Supabase grants ALL on every newly created public table to the Data API
+-- roles by default (the `auto_expose_new_tables` cloud default). A migration
+-- that creates a table and only ADDS grants therefore leaves the defaults in
+-- place. Replicating that here is what makes this harness able to catch such a
+-- migration; without it the harness reports privileges the real database does
+-- not have.
+alter default privileges in schema public
+  grant all on tables to anon, authenticated, service_role;
+
+-- Supabase also provides a storage schema. The import file retention
+-- migration inserts a bucket and defines object policies, so the harness needs
+-- the same minimum surface: the two tables and the path helper.
+create schema if not exists storage;
+
+create table if not exists storage.buckets (
+  id          text primary key,
+  name        text not null,
+  public      boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+
+create table if not exists storage.objects (
+  id          uuid primary key default gen_random_uuid(),
+  bucket_id   text references storage.buckets (id),
+  name        text,
+  owner       uuid,
+  created_at  timestamptz not null default now()
+);
+
+alter table storage.objects enable row level security;
+
+create or replace function storage.foldername(name text)
+returns text[]
+language sql
+immutable
+as $fn$
+  select string_to_array(name, '/')
+$fn$;
+
+grant usage on schema storage to anon, authenticated, service_role;
+grant select, insert on storage.objects to authenticated;
+
 grant usage on schema auth to anon, authenticated, service_role;
 grant execute on function auth.uid() to anon, authenticated, service_role;
 grant execute on function auth.role() to anon, authenticated, service_role;
